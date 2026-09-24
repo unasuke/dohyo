@@ -10,6 +10,7 @@ require "console"
 require_relative "version"
 require_relative "errors"
 require_relative "engine"
+require_relative "loader"
 require_relative "handler"
 require_relative "tls"
 require_relative "connection_limiter"
@@ -112,15 +113,17 @@ module Dohyo
     end
 
     # @parameter zone [Zone] The zone to answer from.
+    # @parameter zone_source [Loader::Source, nil] Where #reload reads the zone again.
     # @parameter listen [Array<Listen>] Where to listen.
     # @parameter udp_payload_size [Integer] The EDNS(0) UDP payload size to advertise and the UDP response limit.
     # @parameter tls [TLS::Certificate, nil] The certificate for tls:// listeners.
     # @parameter max_connections [Integer] The limit shared by every stream listener.
     # @parameter idle_timeout [Numeric] Seconds a stream connection may stay silent (including the TLS handshake).
-    def initialize(zone:, listen:, udp_payload_size:, max_connections:, idle_timeout:, tls: nil)
+    def initialize(zone:, listen:, udp_payload_size:, max_connections:, idle_timeout:, tls: nil, zone_source: nil)
       raise ConfigError, "tls:// listeners need a certificate" if tls.nil? && listen.any? { it.scheme == "tls" }
 
       @zone = zone
+      @zone_source = zone_source
       @listen = listen
       @tls_context = TLS.server_context(tls) if tls
       @engine = Engine.new(zone_provider: -> { @zone }, udp_payload_size:)
@@ -135,6 +138,37 @@ module Dohyo
 
     # Replace the zone. Queries in progress keep the zone they started with.
     attr_writer :zone
+
+    # Read the zone again and replace it, following the serial (RFC 1982):
+    #
+    # - newer: replace the zone;
+    # - the same, with the same content: keep the zone (a SIGHUP without edits);
+    # - the same with different content, older, or unreadable: keep the old zone and log why. A forgotten serial
+    #   bump is caught here rather than served.
+    #
+    # @returns [Symbol] :replaced, :unchanged or :failed.
+    def reload
+      current = @zone
+      zone = @zone_source.load
+
+      if zone.serial == current.serial
+        raise ZoneError.new("the serial #{zone.serial} is unchanged but the content changed", path: @zone_source.path) unless zone == current
+
+        Console.info(self, "zone.reloaded", zone: zone.origin, serial: zone.serial, unchanged: true)
+        return :unchanged
+      end
+
+      unless Zone.serial_newer?(zone.serial, current.serial)
+        raise ZoneError.new("the serial #{zone.serial} is not newer than #{current.serial}", path: @zone_source.path)
+      end
+
+      @zone = zone
+      Console.info(self, "zone.reloaded", zone: zone.origin, serial: zone.serial, unchanged: false)
+      :replaced
+    rescue ZoneError => error
+      Console.error(self, "zone.load_failed", zone: current.origin, path: error.path, reason: error.message)
+      :failed
+    end
 
     # @returns [Array(Array(String, Addrinfo))] The transport name and local address of each bound socket.
     def bound_addresses

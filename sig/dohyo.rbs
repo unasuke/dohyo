@@ -145,6 +145,15 @@ module Dohyo
   end
 
   module Loader
+    class Source < Data
+      attr_reader origin: String
+      attr_reader path: String
+
+      def initialize: (origin: String, path: String) -> void
+
+      def load: () -> Zone
+    end
+
     def self.load: (origin: String, path: String) -> Zone
 
     def self.parse: (String text, origin: String, ?path: String?) -> Zone

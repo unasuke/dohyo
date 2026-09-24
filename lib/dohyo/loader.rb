@@ -42,6 +42,11 @@ module Dohyo
       "dohpath" => 7
     }.freeze
 
+    # Where a zone comes from, so that it can be read again on reload.
+    Source = Data.define(:origin, :path) do
+      def load = Loader.load(origin:, path:)
+    end
+
     # @parameter origin [String] The zone apex from the configuration, absolute (with a trailing dot).
     # @parameter path [String] The zone file.
     # @returns [Zone]
