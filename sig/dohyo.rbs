@@ -1,4 +1,148 @@
 module Dohyo
   VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+
+  class Error < StandardError
+  end
+
+  class ConfigError < Error
+  end
+
+  class ZoneError < Error
+    attr_reader path: String?
+
+    def initialize: (String message, ?path: String?) -> void
+  end
+
+  class ProtocolError < Error
+  end
+
+  # An immutable index of one zone. Names are lowercase absolute keys with a trailing dot; types are type numbers.
+  class Zone
+    type rrset = [Integer, Array[Resolv::DNS::Resource]]
+
+    SOA_TYPE: Integer
+
+    def self.key: (Resolv::DNS::Name name) -> String
+
+    def self.rdata: (Resolv::DNS::Resource record) -> String
+
+    attr_reader origin: String
+    attr_reader soa: Resolv::DNS::Resource::IN::SOA
+    attr_reader serial: Integer
+    attr_reader negative_ttl: Integer
+
+    def initialize: (origin: String, rrsets: Hash[String, Hash[Integer, rrset]]) -> void
+
+    def rrset: (String name, Integer type) -> rrset?
+
+    def types_at: (String name) -> Array[Integer]
+
+    def name_exists?: (String name) -> bool
+
+    def contains?: (String name) -> bool
+
+    def ==: (untyped other) -> bool
+
+    alias eql? ==
+
+    def hash: () -> Integer
+
+    attr_reader fingerprint: Set[[String, Integer, Integer, String]]
+
+    private
+
+    def existing_names: () -> Set[String]
+
+    def build_fingerprint: () -> Set[[String, Integer, Integer, String]]
+  end
+
+  module EDNS
+    TYPE: Integer
+
+    class Options < Data
+      attr_reader udp_payload_size: Integer
+      attr_reader extended_rcode: Integer
+      attr_reader version: Integer
+      attr_reader dnssec_ok: bool
+      attr_reader options: Array[[Integer, String]]
+
+      def initialize: (udp_payload_size: Integer, extended_rcode: Integer, version: Integer, dnssec_ok: bool, options: Array[[Integer, String]]) -> void
+
+      def option_codes: () -> Array[Integer]
+    end
+
+    def self.opt_record?: (Resolv::DNS::Resource record) -> bool
+
+    def self.count: (Resolv::DNS::Message message) -> Integer
+
+    def self.extract: (Resolv::DNS::Message message) -> Options?
+
+    def self.append: (Resolv::DNS::Message message, udp_payload_size: Integer, rcode: Integer) -> Resolv::DNS::Message
+  end
+
+  class Responder
+    ANY: Integer
+
+    def call: (Resolv::DNS::Message query, Zone zone) -> Resolv::DNS::Message
+
+    private
+
+    def negative: (Resolv::DNS::Message response, Zone zone, rcode: Integer) -> Resolv::DNS::Message
+  end
+
+  class Engine
+    type transport = :udp | :stream
+
+    RCODE_NAMES: Hash[Integer, String]
+    FORMERR: Integer
+    SERVFAIL: Integer
+    NOTIMP: Integer
+    REFUSED: Integer
+    BADVERS: Integer
+    IN: Integer
+    ZONE_TRANSFER_TYPES: Array[Integer]
+    CLASSIC_UDP_SIZE: Integer
+    HEADER_SIZE: Integer
+
+    class Result < Data
+      attr_reader bytes: String?
+      attr_reader rcode: String?
+      attr_reader qname: String?
+      attr_reader qtype: Integer?
+      attr_reader truncated: bool
+      attr_reader dropped_reason: (:too_short | :is_response)?
+      attr_reader edns_option_codes: Array[Integer]
+      attr_reader error: StandardError?
+
+      def initialize: (bytes: String?, rcode: String?, qname: String?, qtype: Integer?, truncated: bool, dropped_reason: (:too_short | :is_response)?, edns_option_codes: Array[Integer], error: StandardError?) -> void
+    end
+
+    def initialize: (zone_provider: ^() -> Zone, udp_payload_size: Integer) -> void
+
+    def call: (String bytes, transport: transport) -> Result
+
+    private
+
+    def process: (Resolv::DNS::Message query, Zone zone, transport transport) -> Result
+
+    def answer: (Resolv::DNS::Message query, Zone zone) -> Resolv::DNS::Message
+
+    def error_response: (Resolv::DNS::Message query, Integer rcode, ?question: bool) -> Resolv::DNS::Message
+
+    def header_only_error: (Integer id, Integer flags, Integer rcode) -> Resolv::DNS::Message
+
+    def finish: (Resolv::DNS::Message response, EDNS::Options? edns, transport transport, ?qname: String?, ?qtype: Integer?, ?error: StandardError?) -> Result
+
+    def udp_limit: (EDNS::Options? edns) -> Integer
+
+    def truncate: (Resolv::DNS::Message response, EDNS::Options? edns, Integer rcode) -> Resolv::DNS::Message
+
+    def dropped: (:too_short | :is_response reason) -> Result
+  end
+
+  module Loader
+    def self.load: (origin: String, path: String) -> Zone
+
+    def self.parse: (String text, origin: String, ?path: String?) -> Zone
+  end
 end
