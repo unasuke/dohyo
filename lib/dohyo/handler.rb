@@ -72,7 +72,13 @@ module Dohyo
       queries = 0
       reason = "peer"
 
-      while (length_data = socket.read(2)) && length_data.bytesize == 2
+      loop do
+        # Between queries the connection only waits; on shutdown the server closes such connections at once.
+        @server.connection_waiting(socket)
+        length_data = socket.read(2)
+        @server.connection_working(socket)
+        break unless length_data && length_data.bytesize == 2
+
         length = length_data.unpack1("n")
         input_data = socket.read(length)
         break if input_data.nil? || input_data.bytesize < length
@@ -90,14 +96,25 @@ module Dohyo
 
         socket.write([result.bytes.bytesize].pack("n"), result.bytes)
         socket.flush
+
+        # Answer the query in progress, then close (graceful shutdown):
+        if @server.stopping?
+          reason = "shutdown"
+          break
+        end
       end
     rescue IO::TimeoutError
       # The socket timeout (connection.idle_timeout) set by Server::Wrapper#accept: RFC 7766 §6.2.3.
       reason = "idle"
     rescue IOError, SystemCallError, OpenSSL::SSL::SSLError => error
-      reason = "error"
-      Console.debug(self, "connection.error", transport: @transport, error:)
+      if @server.stopping?
+        reason = "shutdown"
+      else
+        reason = "error"
+        Console.debug(self, "connection.error", transport: @transport, error:)
+      end
     ensure
+      @server.connection_closed(socket)
       socket.close unless socket.closed?
       Console.debug(self, "connection.closed", transport: @transport, reason:, queries:,
         duration: Process.clock_gettime(Process::CLOCK_MONOTONIC) - opened_at)

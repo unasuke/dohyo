@@ -74,7 +74,14 @@ module Dohyo
       # - Connections beyond `limiter` are closed right after accept, before any TLS handshake.
       def accept(server, timeout: nil, limiter: nil, transport: nil, **, &block)
         loop do
-          socket, address = socket_accept(server)
+          socket, address = begin
+            socket_accept(server)
+          rescue IOError, Errno::EBADF
+            # The listening socket was closed to stop accepting (graceful shutdown).
+            return if server.closed?
+
+            raise
+          end
 
           if limiter && !limiter.acquire
             socket.close
@@ -131,7 +138,8 @@ module Dohyo
       @limiter = ConnectionLimiter.new(max_connections)
       @idle_timeout = idle_timeout
       @bound = []
-      @tasks = []
+      @waiting = Set.new
+      @stopping = false
     end
 
     attr_reader :zone, :engine
@@ -172,7 +180,24 @@ module Dohyo
 
     # @returns [Array(Array(String, Addrinfo))] The transport name and local address of each bound socket.
     def bound_addresses
-      @bound.map { |transport, socket| [transport, socket.local_address] }
+      @bound.map { |transport, socket, _| [transport, socket.local_address] }
+    end
+
+    # Whether a graceful shutdown has begun. Stream handlers close their connection after the answer in progress.
+    def stopping? = @stopping
+
+    # Stream handlers report whether a connection is between queries (waiting) or reading and answering one
+    # (working), so that a shutdown can close the waiting ones at once and let the working ones finish.
+    def connection_waiting(socket)
+      @waiting << socket
+    end
+
+    def connection_working(socket)
+      @waiting.delete(socket)
+    end
+
+    def connection_closed(socket)
+      @waiting.delete(socket)
     end
 
     # Bind every listener and start answering in child tasks of `parent`. Returns once everything is bound.
@@ -184,21 +209,45 @@ module Dohyo
 
         endpoint.bind.each do |socket|
           transport = TRANSPORTS.fetch(listen.scheme)
-          @bound << [transport, socket]
+          task = parent.async(transient: true) { run_handler(transport, socket) }
+          @bound << [transport, socket, task]
           Console.info(self, "server.listening", transport:, address: socket.local_address.inspect_sockaddr)
-
-          @tasks << parent.async(transient: true) { run_handler(transport, socket) }
         end
       end
 
       self
     end
 
+    # Stop at once, dropping every connection.
     def stop
-      @tasks.each(&:stop)
-      @bound.each { |_, socket| socket.close unless socket.closed? }
-      @tasks.clear
+      @bound.each do |_, socket, task|
+        task.stop
+        socket.close unless socket.closed?
+      end
       @bound.clear
+      @waiting.clear
+    end
+
+    GRACE_PERIOD = 5
+
+    # Stop accepting, close the connections that are waiting between queries, and give the ones answering a query
+    # up to `grace` seconds to finish before dropping them.
+    def shutdown(grace: GRACE_PERIOD)
+      started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      @stopping = true
+
+      @bound.each do |transport, socket, task|
+        # UDP has no connections: stopping its task is enough. Closing a stream listener ends its accept loop
+        # while the connections it accepted keep running.
+        (transport == "udp") ? task.stop : socket.close
+      end
+      @waiting.to_a.each(&:close)
+
+      deadline = started_at + grace
+      sleep(0.01) while @limiter.count > 0 && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+
+      stop
+      Console.info(self, "server.stopped", duration: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at)
     end
 
     private

@@ -191,6 +191,46 @@ class TestServerIntegration < Minitest::Test
     end
   end
 
+  def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+  def test_shutdown_closes_waiting_connections_at_once_and_stops_listening
+    with_server do |server|
+      tcp = address_of(server, "tcp")
+      waiting = Socket.tcp(tcp.ip_address, tcp.ip_port)
+      assert_equal 1, stream_exchange(waiting, [query_bytes("blog.example.com.", IN::A)]).size
+      waiting_dot = dot_connect(address_of(server, "dot"))
+      assert_equal 1, stream_exchange(waiting_dot, [query_bytes("blog.example.com.", IN::A)]).size
+
+      started = monotonic
+      server.shutdown(grace: 5)
+      assert_operator monotonic - started, :<, 1, "nothing was in progress, so no need to wait"
+
+      assert_nil waiting.read(1)
+      assert_nil waiting_dot.read(1)
+      assert_raises(Errno::ECONNREFUSED) { Socket.tcp(tcp.ip_address, tcp.ip_port) }
+    ensure
+      waiting&.close
+      waiting_dot&.close
+    end
+  end
+
+  def test_shutdown_drops_a_connection_mid_query_after_the_grace_period
+    with_server do |server|
+      tcp = address_of(server, "tcp")
+      socket = Socket.tcp(tcp.ip_address, tcp.ip_port)
+      bytes = query_bytes("blog.example.com.", IN::A)
+      socket.write([bytes.bytesize].pack("n") + bytes.byteslice(0, 5))
+      sleep 0.05 # Let the server read the length and start waiting for the rest.
+
+      started = monotonic
+      server.shutdown(grace: 0.3)
+      assert_in_delta 0.3, monotonic - started, 0.2
+      assert_nil socket.read(1)
+    ensure
+      socket&.close
+    end
+  end
+
   def test_several_queries_on_one_tcp_connection
     with_server do |server|
       responses = tcp_exchange(address_of(server, "tcp"),
