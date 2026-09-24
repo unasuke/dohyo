@@ -12,6 +12,7 @@ require_relative "errors"
 require_relative "engine"
 require_relative "handler"
 require_relative "tls"
+require_relative "connection_limiter"
 
 module Dohyo
   # Binds the listeners and runs a handler for each. It never looks inside the responses.
@@ -65,31 +66,48 @@ module Dohyo
         end
       end
 
-      # The same as IO::Endpoint::Wrapper#accept (io-endpoint 0.18.0), except that a failed TLS handshake is an
-      # expected event (scanners, TLS 1.2 clients, clients giving up) rather than an unhandled exception in the
-      # connection's task, which Async would report as a warning with a backtrace.
-      def accept(server, timeout: nil, **, &block)
+      # The same as IO::Endpoint::Wrapper#accept (io-endpoint 0.18.0), except:
+      #
+      # - A failed TLS handshake is an expected event (scanners, TLS 1.2 clients, clients giving up) rather than an
+      #   unhandled exception in the connection's task, which Async would report as a warning with a backtrace.
+      # - Connections beyond `limiter` are closed right after accept, before any TLS handshake.
+      def accept(server, timeout: nil, limiter: nil, transport: nil, **, &block)
         loop do
           socket, address = socket_accept(server)
+
+          if limiter && !limiter.acquire
+            socket.close
+            Console.debug(self, "connection.closed", transport:, reason: "limit", queries: 0, duration: 0)
+            next
+          end
+
           set_timeout(socket, timeout) if timeout
 
           schedule do
-            if socket.respond_to?(:start)
-              begin
-                socket.start
-              rescue OpenSSL::SSL::SSLError, IOError, SystemCallError => error
-                Console.debug(self, "connection.handshake_failed", error:)
-                socket.close
-                next
-              end
-            end
-
-            # OpenSSL does not return the peer address from accept:
-            address ||= socket.remote_address
-
-            yield socket, address
+            accept_connection(socket, address, &block)
+          ensure
+            limiter&.release
           end
         end
+      end
+
+      private
+
+      def accept_connection(socket, address)
+        if socket.respond_to?(:start)
+          begin
+            socket.start
+          rescue OpenSSL::SSL::SSLError, IOError, SystemCallError => error
+            Console.debug(self, "connection.handshake_failed", error:)
+            socket.close
+            return
+          end
+        end
+
+        # OpenSSL does not return the peer address from accept:
+        address ||= socket.remote_address
+
+        yield socket, address
       end
     end
 
@@ -97,7 +115,8 @@ module Dohyo
     # @parameter listen [Array<Listen>] Where to listen.
     # @parameter udp_payload_size [Integer] The EDNS(0) UDP payload size to advertise and the UDP response limit.
     # @parameter tls [TLS::Certificate, nil] The certificate for tls:// listeners.
-    def initialize(zone:, listen:, udp_payload_size:, tls: nil)
+    # @parameter max_connections [Integer] The limit shared by every stream listener.
+    def initialize(zone:, listen:, udp_payload_size:, max_connections:, tls: nil)
       raise ConfigError, "tls:// listeners need a certificate" if tls.nil? && listen.any? { it.scheme == "tls" }
 
       @zone = zone
@@ -105,6 +124,7 @@ module Dohyo
       @tls_context = TLS.server_context(tls) if tls
       @engine = Engine.new(zone_provider: -> { @zone }, udp_payload_size:)
       @wrapper = Wrapper.new
+      @limiter = ConnectionLimiter.new(max_connections)
       @bound = []
       @tasks = []
     end
@@ -161,7 +181,7 @@ module Dohyo
     def run_handler(transport, socket)
       case transport
       when "udp" then DatagramHandler.new(self, socket, engine: @engine, transport:).run(@wrapper)
-      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper)
+      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper, limiter: @limiter, transport:)
       end
     end
   end

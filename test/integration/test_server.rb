@@ -20,11 +20,11 @@ class TestServerIntegration < Minitest::Test
     FileUtils.rm_rf(@certificates.directory)
   end
 
-  def with_server(listen: LISTEN)
+  def with_server(listen: LISTEN, max_connections: 256)
     tls = Dohyo::TLS.load(certificate_chain: @certificates.certificate_chain, private_key: @certificates.private_key)
 
     Sync do |task|
-      server = Dohyo::Server.new(zone: fixture_zone, listen: listen.map { Dohyo::Server::Listen.parse(it) }, udp_payload_size: 1232, tls:)
+      server = Dohyo::Server.new(zone: fixture_zone, listen: listen.map { Dohyo::Server::Listen.parse(it) }, udp_payload_size: 1232, max_connections:, tls:)
       server.start(task)
       yield server
     ensure
@@ -138,6 +138,32 @@ class TestServerIntegration < Minitest::Test
       assert_raises(OpenSSL::SSL::SSLError) { socket.connect }
     ensure
       socket&.close
+    end
+  end
+
+  def test_connections_beyond_the_limit_are_closed_at_once
+    with_server(max_connections: 1) do |server|
+      tcp = address_of(server, "tcp")
+      first = Socket.tcp(tcp.ip_address, tcp.ip_port)
+      assert_equal 1, stream_exchange(first, [query_bytes("blog.example.com.", IN::A)]).size
+
+      # TCP and DoT share the limit:
+      second = Socket.tcp(tcp.ip_address, tcp.ip_port)
+      assert_nil second.read(1), "closed without an answer"
+      assert_raises(OpenSSL::SSL::SSLError, Errno::ECONNRESET, EOFError) { dot_exchange(address_of(server, "dot"), query_bytes("blog.example.com.", IN::A)) }
+
+      first.close
+      responses = nil
+      20.times do
+        responses = tcp_exchange(tcp, query_bytes("blog.example.com.", IN::A))
+        break
+      rescue NoMethodError, Errno::ECONNRESET
+        sleep 0.05 # The first connection's slot is released asynchronously.
+      end
+      assert_equal 1, responses&.size
+    ensure
+      first&.close
+      second&.close
     end
   end
 
