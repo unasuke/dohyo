@@ -3,6 +3,7 @@
 require "test_helper"
 require "async"
 require "async/dns"
+require "open3"
 
 # Starts Dohyo::Server on loopback ports chosen by the OS and queries it over real sockets.
 class TestServerIntegration < Minitest::Test
@@ -106,5 +107,28 @@ class TestServerIntegration < Minitest::Test
   ensure
     v4&.close
     v6&.close
+  end
+
+  def test_kdig
+    skip "kdig is not installed" unless system("which kdig", out: File::NULL, err: File::NULL)
+
+    with_server do |server|
+      udp = address_of(server, "udp")
+      tcp = address_of(server, "tcp")
+
+      output = kdig("@#{udp.ip_address}", "-p", udp.ip_port.to_s, "blog.example.com", "HTTPS")
+      assert_match(/status: NOERROR/, output)
+      assert_match(/alpn="?h3,h2"?/, output)
+
+      output = kdig("@#{tcp.ip_address}", "-p", tcp.ip_port.to_s, "+tcp", "big.blog.example.com", "A")
+      assert_equal 40, output.scan(/\bIN\s+A\s+192\.0\.2\./).size
+    end
+  end
+
+  private
+
+  # kdig blocks, so it runs in a thread while the reactor keeps serving.
+  def kdig(*arguments)
+    Thread.new { Open3.capture2e("kdig", "+retry=0", "+timeout=3", *arguments).first }.value
   end
 end
