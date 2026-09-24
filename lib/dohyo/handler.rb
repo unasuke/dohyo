@@ -91,6 +91,9 @@ module Dohyo
         socket.write([result.bytes.bytesize].pack("n"), result.bytes)
         socket.flush
       end
+    rescue IO::TimeoutError
+      # The socket timeout (connection.idle_timeout) set by Server::Wrapper#accept: RFC 7766 §6.2.3.
+      reason = "idle"
     rescue IOError, SystemCallError, OpenSSL::SSL::SSLError => error
       reason = "error"
       Console.debug(self, "connection.error", transport: @transport, error:)

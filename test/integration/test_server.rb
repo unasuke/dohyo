@@ -20,11 +20,11 @@ class TestServerIntegration < Minitest::Test
     FileUtils.rm_rf(@certificates.directory)
   end
 
-  def with_server(listen: LISTEN, max_connections: 256)
+  def with_server(listen: LISTEN, max_connections: 256, idle_timeout: 10)
     tls = Dohyo::TLS.load(certificate_chain: @certificates.certificate_chain, private_key: @certificates.private_key)
 
     Sync do |task|
-      server = Dohyo::Server.new(zone: fixture_zone, listen: listen.map { Dohyo::Server::Listen.parse(it) }, udp_payload_size: 1232, max_connections:, tls:)
+      server = Dohyo::Server.new(zone: fixture_zone, listen: listen.map { Dohyo::Server::Listen.parse(it) }, udp_payload_size: 1232, max_connections:, idle_timeout:, tls:)
       server.start(task)
       yield server
     ensure
@@ -58,6 +58,13 @@ class TestServerIntegration < Minitest::Test
 
   # Connects with certificate verification against the test CA, as a DoT client with a known name would.
   def dot_exchange(address, *messages)
+    socket = dot_connect(address)
+    stream_exchange(socket, messages)
+  ensure
+    socket&.close
+  end
+
+  def dot_connect(address)
     context = OpenSSL::SSL::SSLContext.new
     context.set_params(verify_mode: OpenSSL::SSL::VERIFY_PEER, ca_file: @certificates.ca)
     socket = OpenSSL::SSL::SSLSocket.new(Socket.tcp(address.ip_address, address.ip_port), context)
@@ -65,9 +72,7 @@ class TestServerIntegration < Minitest::Test
     socket.hostname = "localhost"
     socket.connect
     socket.post_connection_check("localhost")
-    stream_exchange(socket, messages)
-  ensure
-    socket&.close
+    socket
   end
 
   def stream_exchange(socket, messages)
@@ -164,6 +169,25 @@ class TestServerIntegration < Minitest::Test
     ensure
       first&.close
       second&.close
+    end
+  end
+
+  def test_idle_tcp_and_dot_connections_are_closed
+    with_server(idle_timeout: 1) do |server|
+      tcp = address_of(server, "tcp")
+      socket = Socket.tcp(tcp.ip_address, tcp.ip_port)
+      assert_equal 1, stream_exchange(socket, [query_bytes("blog.example.com.", IN::A)]).size
+
+      dot = dot_connect(address_of(server, "dot"))
+      assert_equal 1, stream_exchange(dot, [query_bytes("blog.example.com.", IN::A)]).size
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      assert_nil socket.read(1), "TCP closed by the server"
+      assert_nil dot.read(1), "DoT closed by the server"
+      assert_in_delta 1, Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, 0.9
+    ensure
+      socket&.close
+      dot&.close
     end
   end
 

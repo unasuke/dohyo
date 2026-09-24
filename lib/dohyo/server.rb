@@ -116,7 +116,8 @@ module Dohyo
     # @parameter udp_payload_size [Integer] The EDNS(0) UDP payload size to advertise and the UDP response limit.
     # @parameter tls [TLS::Certificate, nil] The certificate for tls:// listeners.
     # @parameter max_connections [Integer] The limit shared by every stream listener.
-    def initialize(zone:, listen:, udp_payload_size:, max_connections:, tls: nil)
+    # @parameter idle_timeout [Numeric] Seconds a stream connection may stay silent (including the TLS handshake).
+    def initialize(zone:, listen:, udp_payload_size:, max_connections:, idle_timeout:, tls: nil)
       raise ConfigError, "tls:// listeners need a certificate" if tls.nil? && listen.any? { it.scheme == "tls" }
 
       @zone = zone
@@ -125,6 +126,7 @@ module Dohyo
       @engine = Engine.new(zone_provider: -> { @zone }, udp_payload_size:)
       @wrapper = Wrapper.new
       @limiter = ConnectionLimiter.new(max_connections)
+      @idle_timeout = idle_timeout
       @bound = []
       @tasks = []
     end
@@ -181,7 +183,7 @@ module Dohyo
     def run_handler(transport, socket)
       case transport
       when "udp" then DatagramHandler.new(self, socket, engine: @engine, transport:).run(@wrapper)
-      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper, limiter: @limiter, transport:)
+      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper, limiter: @limiter, transport:, timeout: @idle_timeout)
       end
     end
   end
