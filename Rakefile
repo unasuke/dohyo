@@ -7,4 +7,9 @@ Minitest::TestTask.create
 
 require "standard/rake"
 
-task default: %i[test standard]
+desc "Type-check the resolution logic with Steep"
+task :steep do
+  sh "steep", "check"
+end
+
+task default: %i[test standard steep]
