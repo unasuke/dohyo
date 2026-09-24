@@ -59,6 +59,33 @@ module Dohyo
           socket.close
         end
       end
+
+      # The same as IO::Endpoint::Wrapper#accept (io-endpoint 0.18.0), except that a failed TLS handshake is an
+      # expected event (scanners, TLS 1.2 clients, clients giving up) rather than an unhandled exception in the
+      # connection's task, which Async would report as a warning with a backtrace.
+      def accept(server, timeout: nil, **, &block)
+        loop do
+          socket, address = socket_accept(server)
+          set_timeout(socket, timeout) if timeout
+
+          schedule do
+            if socket.respond_to?(:start)
+              begin
+                socket.start
+              rescue OpenSSL::SSL::SSLError, IOError, SystemCallError => error
+                Console.debug(self, "connection.handshake_failed", error:)
+                socket.close
+                next
+              end
+            end
+
+            # OpenSSL does not return the peer address from accept:
+            address ||= socket.remote_address
+
+            yield socket, address
+          end
+        end
+      end
     end
 
     # @parameter zone [Zone] The zone to answer from.
