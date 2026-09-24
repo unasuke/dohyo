@@ -8,12 +8,11 @@ Gem::Specification.new do |spec|
   spec.authors = ["Yusuke Nakamura"]
   spec.email = ["yusuke1994525@gmail.com"]
 
-  spec.summary = "TODO: Write a short summary, because RubyGems requires one."
-  spec.description = "TODO: Write a longer description or delete this line."
+  spec.summary = "An authoritative DNS server that answers from BIND zone files"
+  spec.description = "dohyo is an authoritative DNS server written in Ruby. It serves BIND-format zone files over UDP, TCP, DNS over TLS, and DNS over QUIC."
   spec.homepage = "https://github.com/unasuke/dohyo"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.2.0"
-  spec.metadata["allowed_push_host"] = "TODO: Set to your gem server 'https://example.com'"
+  spec.required_ruby_version = ">= 4.0"
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/unasuke/dohyo"
   spec.metadata["changelog_uri"] = "https://github.com/unasuke/dohyo/blob/main/CHANGELOG.md"
