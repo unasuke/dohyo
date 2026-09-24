@@ -2,3 +2,4 @@
 
 require_relative "dohyo/version"
 require_relative "dohyo/errors"
+require_relative "dohyo/zone"
