@@ -37,7 +37,9 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "async-dns"
+  spec.add_dependency "async-dns", "~> 1.4"
+  spec.add_dependency "async-http"
+  spec.add_dependency "io-endpoint"
 
   # For more information and examples about making a new gem, check out our
   # guide at: https://guides.rubygems.org/make-your-own-gem/
