@@ -38,6 +38,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "async-dns", "~> 1.4"
   spec.add_dependency "async-http"
+  spec.add_dependency "dns-zonefile", "~> 1.3"
   spec.add_dependency "io-endpoint"
 
   # For more information and examples about making a new gem, check out our
