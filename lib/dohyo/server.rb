@@ -14,7 +14,7 @@ require_relative "handler"
 module Dohyo
   # Binds the listeners and runs a handler for each. It never looks inside the responses.
   class Server
-    LISTEN_SCHEMES = %w[udp tcp].freeze
+    LISTEN_SCHEMES = %w[udp tcp tls quic].freeze
     LISTEN_PATTERN = %r{\A(?<scheme>[a-z]+)://(?:\[(?<ipv6>[^\]]+)\]|(?<host>[^:\[\]/]+)):(?<port>\d+)\z}
 
     # One `scheme://host:port` entry of the listen list. IPv6 hosts are written in brackets.
