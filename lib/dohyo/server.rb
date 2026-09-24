@@ -4,17 +4,22 @@ require "async"
 require "io/endpoint"
 require "io/endpoint/host_endpoint"
 require "io/endpoint/wrapper"
+require "io/endpoint/ssl_endpoint"
 require "console"
 
 require_relative "version"
 require_relative "errors"
 require_relative "engine"
 require_relative "handler"
+require_relative "tls"
 
 module Dohyo
   # Binds the listeners and runs a handler for each. It never looks inside the responses.
   class Server
     LISTEN_SCHEMES = %w[udp tcp tls quic].freeze
+
+    # The transport name of each scheme, used in logs and metrics.
+    TRANSPORTS = {"udp" => "udp", "tcp" => "tcp", "tls" => "dot", "quic" => "doq"}.freeze
     LISTEN_PATTERN = %r{\A(?<scheme>[a-z]+)://(?:\[(?<ipv6>[^\]]+)\]|(?<host>[^:\[\]/]+)):(?<port>\d+)\z}
 
     # One `scheme://host:port` entry of the listen list. IPv6 hosts are written in brackets.
@@ -91,9 +96,13 @@ module Dohyo
     # @parameter zone [Zone] The zone to answer from.
     # @parameter listen [Array<Listen>] Where to listen.
     # @parameter udp_payload_size [Integer] The EDNS(0) UDP payload size to advertise and the UDP response limit.
-    def initialize(zone:, listen:, udp_payload_size:)
+    # @parameter tls [TLS::Certificate, nil] The certificate for tls:// listeners.
+    def initialize(zone:, listen:, udp_payload_size:, tls: nil)
+      raise ConfigError, "tls:// listeners need a certificate" if tls.nil? && listen.any? { it.scheme == "tls" }
+
       @zone = zone
       @listen = listen
+      @tls_context = TLS.server_context(tls) if tls
       @engine = Engine.new(zone_provider: -> { @zone }, udp_payload_size:)
       @wrapper = Wrapper.new
       @bound = []
@@ -118,7 +127,7 @@ module Dohyo
         endpoint = endpoint_for(listen)
 
         endpoint.bind.each do |socket|
-          transport = listen.scheme
+          transport = TRANSPORTS.fetch(listen.scheme)
           @bound << [transport, socket]
           Console.info(self, "server.listening", transport:, address: socket.local_address.inspect_sockaddr)
 
@@ -142,13 +151,17 @@ module Dohyo
       case listen.scheme
       when "udp" then IO::Endpoint.udp(listen.host, listen.port, wrapper: @wrapper)
       when "tcp" then IO::Endpoint.tcp(listen.host, listen.port, wrapper: @wrapper)
+      # The TLS handshake runs in the connection's own fiber (SSLServer#start_immediately is false), so one slow
+      # client cannot hold up the accept loop.
+      when "tls" then IO::Endpoint::SSLEndpoint.new(IO::Endpoint.tcp(listen.host, listen.port, wrapper: @wrapper), ssl_context: @tls_context)
+      else raise ConfigError, "#{listen.scheme}:// is not supported yet"
       end
     end
 
     def run_handler(transport, socket)
       case transport
       when "udp" then DatagramHandler.new(self, socket, engine: @engine, transport:).run(@wrapper)
-      when "tcp" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper)
+      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper)
       end
     end
   end

@@ -4,16 +4,27 @@ require "test_helper"
 require "async"
 require "async/dns"
 require "open3"
+require "support/certificates"
 
 # Starts Dohyo::Server on loopback ports chosen by the OS and queries it over real sockets.
 class TestServerIntegration < Minitest::Test
   include DohyoTestHelper
 
-  LISTEN = %w[udp://127.0.0.1:0 tcp://127.0.0.1:0 udp://[::1]:0 tcp://[::1]:0].freeze
+  LISTEN = %w[udp://127.0.0.1:0 tcp://127.0.0.1:0 udp://[::1]:0 tcp://[::1]:0 tls://127.0.0.1:0].freeze
+
+  def setup
+    @certificates = TestCertificates.write
+  end
+
+  def teardown
+    FileUtils.rm_rf(@certificates.directory)
+  end
 
   def with_server(listen: LISTEN)
+    tls = Dohyo::TLS.load(certificate_chain: @certificates.certificate_chain, private_key: @certificates.private_key)
+
     Sync do |task|
-      server = Dohyo::Server.new(zone: fixture_zone, listen: listen.map { Dohyo::Server::Listen.parse(it) }, udp_payload_size: 1232)
+      server = Dohyo::Server.new(zone: fixture_zone, listen: listen.map { Dohyo::Server::Listen.parse(it) }, udp_payload_size: 1232, tls:)
       server.start(task)
       yield server
     ensure
@@ -40,13 +51,32 @@ class TestServerIntegration < Minitest::Test
 
   def tcp_exchange(address, *messages)
     socket = Socket.tcp(address.ip_address, address.ip_port)
+    stream_exchange(socket, messages)
+  ensure
+    socket&.close
+  end
+
+  # Connects with certificate verification against the test CA, as a DoT client with a known name would.
+  def dot_exchange(address, *messages)
+    context = OpenSSL::SSL::SSLContext.new
+    context.set_params(verify_mode: OpenSSL::SSL::VERIFY_PEER, ca_file: @certificates.ca)
+    socket = OpenSSL::SSL::SSLSocket.new(Socket.tcp(address.ip_address, address.ip_port), context)
+    socket.sync_close = true
+    socket.hostname = "localhost"
+    socket.connect
+    socket.post_connection_check("localhost")
+    stream_exchange(socket, messages)
+  ensure
+    socket&.close
+  end
+
+  def stream_exchange(socket, messages)
     messages.map do |bytes|
-      socket.write([bytes.bytesize].pack("n"), bytes)
+      socket.write([bytes.bytesize].pack("n") + bytes)
+      socket.flush
       length = socket.read(2).unpack1("n")
       socket.read(length)
     end
-  ensure
-    socket&.close
   end
 
   def test_udp_and_tcp_over_ipv4_and_ipv6
@@ -76,6 +106,38 @@ class TestServerIntegration < Minitest::Test
 
       tcp = tcp_exchange(address_of(server, "tcp"), query_bytes("big.blog.example.com.", IN::A)).first
       assert_equal 40, Resolv::DNS::Message.decode(tcp).answer.size
+    end
+  end
+
+  def test_case_28_big_answer_over_dot_is_not_truncated
+    with_server do |server|
+      response = dot_exchange(address_of(server, "dot"), query_bytes("big.blog.example.com.", IN::A)).first
+      message = Resolv::DNS::Message.decode(response)
+      assert_equal 0, message.tc
+      assert_equal 40, message.answer.size
+    end
+  end
+
+  def test_several_queries_on_one_dot_connection
+    with_server do |server|
+      responses = dot_exchange(address_of(server, "dot"),
+        query_bytes("blog.example.com.", IN::A, id: 1), query_bytes("nope.blog.example.com.", IN::A, id: 2))
+      assert_equal [[1, 0], [2, Resolv::DNS::RCode::NXDomain]], responses.map {
+        m = Resolv::DNS::Message.decode(it)
+        [m.id, m.rcode]
+      }
+    end
+  end
+
+  def test_dot_offers_tls_1_3_only
+    with_server do |server|
+      address = address_of(server, "dot")
+      context = OpenSSL::SSL::SSLContext.new
+      context.max_version = OpenSSL::SSL::TLS1_2_VERSION
+      socket = OpenSSL::SSL::SSLSocket.new(Socket.tcp(address.ip_address, address.ip_port), context)
+      assert_raises(OpenSSL::SSL::SSLError) { socket.connect }
+    ensure
+      socket&.close
     end
   end
 
@@ -122,6 +184,16 @@ class TestServerIntegration < Minitest::Test
 
       output = kdig("@#{tcp.ip_address}", "-p", tcp.ip_port.to_s, "+tcp", "big.blog.example.com", "A")
       assert_equal 40, output.scan(/\bIN\s+A\s+192\.0\.2\./).size
+
+      dot = address_of(server, "dot")
+      tls = ["@#{dot.ip_address}", "-p", dot.ip_port.to_s, "+tls-ca=#{@certificates.ca}", "+tls-hostname=localhost"]
+      output = kdig(*tls, "big.blog.example.com", "A")
+      assert_match(/TLS session \(TLS1\.3\)/, output)
+      assert_equal 40, output.scan(/\bIN\s+A\s+192\.0\.2\./).size
+
+      output = kdig(*tls, "+keepopen", "blog.example.com", "A", "blog.example.com", "AAAA")
+      assert_match(/192\.0\.2\.1/, output)
+      assert_match(/2001:db8::1/, output)
     end
   end
 
