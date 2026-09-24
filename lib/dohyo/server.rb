@@ -33,6 +33,34 @@ module Dohyo
       def to_s = "#{scheme}://#{host.include?(":") ? "[#{host}]" : host}:#{port}"
     end
 
+    # Binds IPv6 sockets with IPV6_V6ONLY, so that "[::]" never accepts IPv4-mapped addresses regardless of the
+    # net.ipv6.bindv6only sysctl; IPv4 is listened on separately. Otherwise the same as IO::Endpoint::Wrapper#bind
+    # (io-endpoint 0.18.0), which has no hook between creating and binding the socket.
+    class Wrapper < IO::Endpoint::Wrapper
+      def bind(local_address, protocol: 0, reuse_address: true, backlog: Socket::SOMAXCONN, **, &block)
+        socket = nil
+
+        begin
+          socket = Socket.new(local_address.afamily, local_address.socktype, protocol)
+          socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, 1) if reuse_address
+          socket.ipv6only! if local_address.ipv6?
+          socket.bind(local_address.to_sockaddr)
+          socket.listen(backlog) if local_address.socktype == Socket::SOCK_STREAM
+        rescue
+          socket&.close
+          raise
+        end
+
+        return socket unless block
+
+        schedule do
+          yield socket
+        ensure
+          socket.close
+        end
+      end
+    end
+
     # @parameter zone [Zone] The zone to answer from.
     # @parameter listen [Array<Listen>] Where to listen.
     # @parameter udp_payload_size [Integer] The EDNS(0) UDP payload size to advertise and the UDP response limit.
@@ -40,7 +68,7 @@ module Dohyo
       @zone = zone
       @listen = listen
       @engine = Engine.new(zone_provider: -> { @zone }, udp_payload_size:)
-      @wrapper = IO::Endpoint::Wrapper.default
+      @wrapper = Wrapper.new
       @bound = []
       @tasks = []
     end

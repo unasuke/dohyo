@@ -93,4 +93,18 @@ class TestServerIntegration < Minitest::Test
       assert_equal [4242, Resolv::DNS::RCode::FormErr], header_of(response).values_at(:id, :rcode)
     end
   end
+
+  # IPV6_V6ONLY: "[::]" must not take the IPv4 side of the port, so both can be bound at once.
+  def test_ipv4_and_ipv6_wildcards_share_a_port
+    wrapper = Dohyo::Server::Wrapper.new
+    v4 = wrapper.bind(Addrinfo.udp("0.0.0.0", 0))
+    port = v4.local_address.ip_port
+    v6 = wrapper.bind(Addrinfo.udp("::", port))
+
+    assert_equal port, v6.local_address.ip_port
+    assert v6.getsockopt(Socket::IPPROTO_IPV6, Socket::IPV6_V6ONLY).bool
+  ensure
+    v4&.close
+    v6&.close
+  end
 end
