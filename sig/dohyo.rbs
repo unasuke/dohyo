@@ -41,6 +41,8 @@ module Dohyo
 
     def types_at: (String name) -> Array[Integer]
 
+    def record_count: () -> Integer
+
     def name_exists?: (String name) -> bool
 
     def contains?: (String name) -> bool

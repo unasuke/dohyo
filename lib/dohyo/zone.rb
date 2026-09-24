@@ -65,6 +65,9 @@ module Dohyo
       @rrsets.fetch(name, {}).keys
     end
 
+    # The number of RRs, for logs.
+    def record_count = @fingerprint.size
+
     # True for names that own records and for empty non-terminals (RFC 8020).
     def name_exists?(name)
       @names.include?(name)
