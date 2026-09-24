@@ -26,6 +26,10 @@ module Dohyo
 
     def self.rdata: (Resolv::DNS::Resource record) -> String
 
+    SERIAL_HALF: Integer
+
+    def self.serial_newer?: (Integer serial, Integer previous) -> bool
+
     attr_reader origin: String
     attr_reader soa: Resolv::DNS::Resource::IN::SOA
     attr_reader serial: Integer

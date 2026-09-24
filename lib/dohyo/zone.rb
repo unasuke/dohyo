@@ -26,6 +26,14 @@ module Dohyo
       message.encode.byteslice(23..) || "".b
     end
 
+    SERIAL_HALF = 2**31
+
+    # RFC 1982 serial number arithmetic (SERIAL_BITS = 32): whether `serial` is newer than `previous`. Equal
+    # serials, and the pair exactly 2^31 apart whose order is undefined, are not newer.
+    def self.serial_newer?(serial, previous)
+      (serial < previous && previous - serial > SERIAL_HALF) || (serial > previous && serial - previous < SERIAL_HALF)
+    end
+
     attr_reader :origin, :soa, :serial, :negative_ttl
 
     # @parameter origin [String] The zone apex as a key.

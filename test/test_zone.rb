@@ -62,6 +62,15 @@ class TestZone < Minitest::Test
     assert Ractor.shareable?(fixture_zone)
   end
 
+  def test_serial_newer_follows_rfc_1982
+    assert Dohyo::Zone.serial_newer?(2026092302, 2026092301)
+    refute Dohyo::Zone.serial_newer?(2026092301, 2026092302)
+    refute Dohyo::Zone.serial_newer?(1, 1)
+    assert Dohyo::Zone.serial_newer?(0, 2**32 - 1), "wraps around"
+    assert Dohyo::Zone.serial_newer?(2**31 - 1, 0)
+    refute Dohyo::Zone.serial_newer?(2**31, 0), "exactly 2^31 apart is undefined"
+  end
+
   def test_equality_compares_content
     text = File.read(FIXTURE)
     same = Dohyo::Loader.parse(text.gsub(/^; .*\n/, "").gsub("IN A     ", "IN A "), origin: ORIGIN)
