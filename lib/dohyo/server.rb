@@ -14,6 +14,7 @@ require_relative "loader"
 require_relative "handler"
 require_relative "tls"
 require_relative "connection_limiter"
+require_relative "metrics"
 
 module Dohyo
   # Binds the listeners and runs a handler for each. It never looks inside the responses.
@@ -127,11 +128,13 @@ module Dohyo
     # @parameter max_connections [Integer] The limit shared by every stream listener.
     # @parameter idle_timeout [Numeric] Seconds a stream connection may stay silent (including the TLS handshake).
     # @parameter doq_max_streams [Integer] Concurrent streams a DoQ client may open per connection.
-    def initialize(zone:, listen:, udp_payload_size:, max_connections:, idle_timeout:, tls: nil, zone_source: nil, doq_max_streams: 16)
+    # @parameter metrics [Metrics] Where the handlers count queries and connections.
+    def initialize(zone:, listen:, udp_payload_size:, max_connections:, idle_timeout:, tls: nil, zone_source: nil, doq_max_streams: 16, metrics: Metrics.new)
       raise ConfigError, "tls:// and quic:// listeners need a certificate" if tls.nil? && listen.any? { %w[tls quic].include?(it.scheme) }
 
       @zone = zone
       @zone_source = zone_source
+      @metrics = metrics
       @listen = listen
       @tls = tls
       @tls_context = TLS.server_context(tls) if tls
@@ -145,7 +148,7 @@ module Dohyo
       @stopping = false
     end
 
-    attr_reader :zone, :engine
+    attr_reader :zone, :engine, :metrics
 
     # Replace the zone. Queries in progress keep the zone they started with.
     attr_writer :zone
@@ -270,7 +273,7 @@ module Dohyo
       require_relative "doq"
 
       listener = DoQ::Listener.new(host: listen.host, port: listen.port, engine: @engine, limiter: @limiter,
-        idle_timeout: @idle_timeout, max_streams: @doq_max_streams, certificate: @tls)
+        idle_timeout: @idle_timeout, max_streams: @doq_max_streams, certificate: @tls, metrics: @metrics)
       task = parent.async(transient: true) { listener.run }
       @bound << ["doq", listener, task]
       Console.info(self, "server.listening", transport: "doq", address: listener.local_address.inspect_sockaddr)

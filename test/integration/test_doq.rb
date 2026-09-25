@@ -74,6 +74,19 @@ class TestDoQ < Minitest::Test
     end
   end
 
+  def test_queries_are_counted_but_protocol_errors_are_not
+    with_server do |server|
+      client = connect
+      assert_equal 0, decode(client.query(query_bytes("blog.example.com.", IN::AAAA, id: 0)).wait).rcode
+      client.query(query_bytes("blog.example.com.", IN::A, id: 7))
+      client.wait_for_close
+
+      assert_equal 1, server.metrics.value("dohyo_queries_total", transport: "doq", qtype: "AAAA", rcode: "NOERROR")
+      assert_nil server.metrics.value("dohyo_queries_total", transport: "doq", qtype: "A", rcode: "NOERROR")
+      assert_nil server.metrics.value("dohyo_queries_dropped_total", transport: "doq", reason: "too_short")
+    end
+  end
+
   def test_q2_several_streams_on_one_connection
     with_server do
       client = connect

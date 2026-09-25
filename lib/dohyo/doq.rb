@@ -5,6 +5,7 @@ require "async"
 require "console"
 
 require_relative "errors"
+require_relative "handler"
 
 begin
   require "protocol/quic"
@@ -102,9 +103,13 @@ module Dohyo
     class Listener
       TRANSPORT = "doq"
 
+      include QueryReport
+
       # @parameter certificate [TLS::Certificate] Its files are read again by protocol-quic.
-      def initialize(host:, port:, engine:, limiter:, idle_timeout:, max_streams:, certificate:)
+      # @parameter metrics [Metrics]
+      def initialize(host:, port:, engine:, limiter:, idle_timeout:, max_streams:, certificate:, metrics:)
         @engine = engine
+        @metrics = metrics
         @limiter = limiter
         @connections = Set.new
         @stopping = false
@@ -223,10 +228,12 @@ module Dohyo
 
         started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         result = @engine.call(message, transport: :stream)
-        log_result(result, started_at)
 
+        # Not counted as queries: the connection is closed instead (dohyo_connections_closed_total).
         return protocol_error(connection, "keepalive_option") if result.edns_option_codes.include?(EDNS_TCP_KEEPALIVE)
         return protocol_error(connection, "malformed") unless result.bytes
+
+        report_query(result, transport: TRANSPORT, started_at:, metrics: @metrics)
 
         connection.queries += 1
         begin
@@ -249,12 +256,6 @@ module Dohyo
 
         connection.close_reason ||= reason
         connection.close(code)
-      end
-
-      def log_result(result, started_at)
-        Console.error(self, "query.failed", transport: TRANSPORT, error: result.error) if result.error
-        Console.debug(self, "query.processed", transport: TRANSPORT, qname: result.qname, qtype: result.qtype,
-          rcode: result.rcode, tc: result.truncated, duration: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at)
       end
     end
   end

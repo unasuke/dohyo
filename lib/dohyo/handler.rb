@@ -6,20 +6,22 @@ require "console"
 require "openssl"
 
 module Dohyo
-  # Logging shared by the handlers. The engine has no I/O, so the transports log on its behalf.
-  module HandlerLogging
+  # Logs and metrics for each query, shared by every transport. The engine has no I/O, so the transports report on
+  # its behalf.
+  module QueryReport
     private
 
-    def log_result(result, transport, started_at)
-      if result.error
-        Console.error(self, "query.failed", transport:, error: result.error)
-      end
+    def report_query(result, transport:, started_at:, metrics:)
+      duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+      Console.error(self, "query.failed", transport:, error: result.error) if result.error
 
       if result.dropped_reason
         Console.debug(self, "query.dropped", transport:, reason: result.dropped_reason)
+        metrics.dropped(transport:, reason: result.dropped_reason)
       else
         Console.debug(self, "query.processed", transport:, qname: result.qname, qtype: result.qtype,
-          rcode: result.rcode, tc: result.truncated, duration: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at)
+          rcode: result.rcode, tc: result.truncated, duration:)
+        metrics.query(transport:, qtype: result.qtype, rcode: result.rcode, duration:, truncated: result.truncated)
       end
     end
   end
@@ -30,7 +32,7 @@ module Dohyo
   # queries with SERVFAIL and ID 0, and truncates anything over 512 bytes into a message with QR=0 and no question.
   # Here the engine does all of that according to RFC 1035 and RFC 6891.
   class DatagramHandler < Async::DNS::DatagramHandler
-    include HandlerLogging
+    include QueryReport
 
     def initialize(server, socket, engine:, transport: "udp")
       super(server, socket)
@@ -43,7 +45,7 @@ module Dohyo
     def respond(socket, input_data, remote_address)
       started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = @engine.call(input_data, transport: :udp)
-      log_result(result, @transport, started_at)
+      report_query(result, transport: @transport, started_at:, metrics: @server.metrics)
 
       socket.sendmsg(result.bytes, 0, remote_address) if result.bytes
     rescue IOError, SystemCallError => error
@@ -57,7 +59,7 @@ module Dohyo
   # Overrides Async::DNS::StreamHandler#handle_connection (async-dns 1.4.1), which answers through
   # Server#process_query (always AA=1, SERVFAIL with ID 0 on decode errors).
   class StreamHandler < Async::DNS::StreamHandler
-    include HandlerLogging
+    include QueryReport
 
     def initialize(server, socket, engine:, transport: "tcp")
       super(server, socket)
@@ -86,7 +88,7 @@ module Dohyo
         queries += 1
         started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         result = @engine.call(input_data, transport: :stream)
-        log_result(result, @transport, started_at)
+        report_query(result, transport: @transport, started_at:, metrics: @server.metrics)
 
         # A query that is not answered (a response, or shorter than a header) ends the connection:
         unless result.bytes

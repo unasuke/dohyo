@@ -231,6 +231,27 @@ class TestServerIntegration < Minitest::Test
     end
   end
 
+  def test_queries_are_counted_per_transport
+    with_server do |server|
+      udp_exchange(address_of(server, "udp"), query_bytes("big.blog.example.com.", IN::A))
+      tcp_exchange(address_of(server, "tcp"), query_bytes("nope.blog.example.com.", IN::AAAA))
+      dot_exchange(address_of(server, "dot"), query_bytes("blog.example.com.", IN::HTTPS))
+      socket = Socket.new(:INET, :DGRAM)
+      socket.send("short".b, 0, address_of(server, "udp").to_sockaddr)
+
+      metrics = server.metrics
+      assert_equal 1, metrics.value("dohyo_queries_total", transport: "udp", qtype: "A", rcode: "NOERROR")
+      assert_equal 1, metrics.value("dohyo_responses_truncated_total")
+      assert_equal 1, metrics.value("dohyo_queries_total", transport: "tcp", qtype: "AAAA", rcode: "NXDOMAIN")
+      assert_equal 1, metrics.value("dohyo_queries_total", transport: "dot", qtype: "HTTPS", rcode: "NOERROR")
+      sleep 0.05
+      assert_equal 1, metrics.value("dohyo_queries_dropped_total", transport: "udp", reason: "too_short")
+      assert_match(/^dohyo_query_duration_seconds_count\{transport="dot"\} 1$/, metrics.render)
+    ensure
+      socket&.close
+    end
+  end
+
   def test_several_queries_on_one_tcp_connection
     with_server do |server|
       responses = tcp_exchange(address_of(server, "tcp"),
