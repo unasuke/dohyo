@@ -6,19 +6,26 @@ dohyo の導入、起動、更新、確認の手順です。例では、ネー�
 
 dohyo は gem としては入れず、git のチェックアウトを Bundler で動かします。
 
-Ubuntu でのビルドに要るパッケージは次のとおりです。
+Debian 13 でのビルドに要るパッケージは次のとおりです。
 
 ```sh
-sudo apt-get install -y git build-essential cmake pkg-config libssl-dev libyaml-dev zlib1g-dev libjitterentropy3-dev
+sudo apt-get install -y --no-install-recommends git curl ca-certificates build-essential \
+  libssl-dev libyaml-dev zlib1g-dev libffi-dev pkg-config cmake clang libzstd-dev
 ```
 
-`cmake` と C++17 のコンパイラは、protocol-quic（DNS over QUIC）のビルドに使います。最近の Ubuntu では `libjitterentropy3-dev` も要ります。protocol-quic のビルドの道具が依存する rugged が OpenSSL を静的にリンクし、OpenSSL の pkg-config の情報が `libjitterentropy.a` を参照しているためです。
+1 行目と、`libssl-dev`・`libyaml-dev`・`zlib1g-dev`・`libffi-dev` は Ruby のビルドに使います。protocol-quic（DNS over QUIC）は、g++ ではなく `clang++` と `cmake` でビルドします。そのビルドの道具が依存する rugged は OpenSSL を静的にリンクするので、Debian では `libzstd-dev` が、最近の Ubuntu ではさらに `libjitterentropy3-dev` が要ります。下の確認に使う kdig は `knot-dnsutils` に入っています。
+
+小さなインスタンスでは、ビルドの間だけ swap を足してください。1 つずつビルドするならプロセスは小さいのですが、CPU が複数あると Ruby も protocol-quic も並列にコンパイルします。
 
 Ruby 4.0.7 は、[ruby-build](https://github.com/rbenv/ruby-build) で `/usr/local` の下に入れます。
 
 ```sh
+git clone https://github.com/rbenv/ruby-build /tmp/ruby-build
+sudo /tmp/ruby-build/install.sh
 sudo ruby-build 4.0.7 /usr/local/ruby-4.0.7
 ```
+
+dohyo は設定とゾーンをロケールによらず UTF-8 として読むので、最小構成の C ロケールのままで構いません。
 
 あとで Ruby を上げるときは、新しい版を隣のディレクトリに入れ、systemd のユニットのパスを書き換えます。
 

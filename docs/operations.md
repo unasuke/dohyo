@@ -6,19 +6,26 @@ How to install, run, update and check dohyo. The examples use `ns.example.com` a
 
 dohyo runs from a git checkout with Bundler; it is not installed as a gem.
 
-Build requirements, on Ubuntu:
+Build requirements, on Debian 13:
 
 ```sh
-sudo apt-get install -y git build-essential cmake pkg-config libssl-dev libyaml-dev zlib1g-dev libjitterentropy3-dev
+sudo apt-get install -y --no-install-recommends git curl ca-certificates build-essential \
+  libssl-dev libyaml-dev zlib1g-dev libffi-dev pkg-config cmake clang libzstd-dev
 ```
 
-`cmake` and a C++17 compiler build protocol-quic (DNS over QUIC). `libjitterentropy3-dev` is needed on recent Ubuntu because building rugged, which protocol-quic's build tool depends on, links OpenSSL statically and OpenSSL's pkg-config file refers to `libjitterentropy.a`.
+The first line and `libssl-dev`, `libyaml-dev`, `zlib1g-dev` and `libffi-dev` build Ruby. protocol-quic (DNS over QUIC) is built with `clang++` (not g++) and `cmake`. Its build tool depends on rugged, whose build links OpenSSL statically: on Debian that needs `libzstd-dev`, and on recent Ubuntu `libjitterentropy3-dev` as well. `knot-dnsutils` provides kdig for the checks below.
+
+On a small instance, add swap for the build; the processes are small when built one at a time, but Ruby and protocol-quic compile in parallel when there are several CPUs.
 
 Install Ruby 4.0.7 under `/usr/local` with [ruby-build](https://github.com/rbenv/ruby-build):
 
 ```sh
+git clone https://github.com/rbenv/ruby-build /tmp/ruby-build
+sudo /tmp/ruby-build/install.sh
 sudo ruby-build 4.0.7 /usr/local/ruby-4.0.7
 ```
+
+dohyo reads the configuration and the zone as UTF-8 whatever the locale, so the minimal system's C locale is fine.
 
 To upgrade Ruby later, install the new version next to it and change the paths in the systemd unit.
 
