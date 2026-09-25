@@ -1,34 +1,57 @@
 # Dohyo
 
-TODO: Delete this and the text below, and describe your gem
+dohyo is an authoritative DNS server written in Ruby. It answers for one zone, read from a BIND-format zone file, over UDP and TCP, DNS over TLS (RFC 7858) and DNS over QUIC (RFC 9250), and exposes Prometheus metrics.
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/dohyo`. To experiment with that code, run `bin/console` for an interactive prompt.
+It is deliberately small: the zone may hold SOA, NS, A, AAAA and HTTPS records, and there is no recursion, DNSSEC signing, zone transfer, wildcard, CNAME or delegation below the apex.
 
 ## Installation
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
-
-Install the gem and add to the application's Gemfile by executing:
+dohyo needs Ruby 4.0 or later and runs from a git checkout:
 
 ```bash
-bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+git clone https://github.com/unasuke/dohyo
+cd dohyo
+bundle install
 ```
 
-If bundler is not being used to manage dependencies, install the gem by executing:
+DNS over QUIC uses a fork of [protocol-quic](https://github.com/unasuke/protocol-quic) (branch `ruby-stream-io-bindings`), a native extension built on ngtcp2. Building it needs a C++17 compiler, cmake, pkg-config and the OpenSSL headers; on recent Ubuntu also `libjitterentropy3-dev`. Without a `quic://` listener it is never loaded.
 
-```bash
-gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
-```
+See [docs/operations.md](docs/operations.md) for installing on a server with systemd.
 
 ## Usage
 
-TODO: Write usage instructions here
+A minimal configuration:
+
+```yaml
+zone:
+  origin: sub.example.com.
+  file: /etc/dohyo/zones/sub.example.com.zone
+listen:
+  - udp://0.0.0.0:53
+  - tcp://0.0.0.0:53
+  - tls://0.0.0.0:853
+  - quic://0.0.0.0:853
+tls:
+  certificate_chain: /etc/dohyo/tls/fullchain.pem
+  private_key: /etc/dohyo/tls/privkey.pem
+```
+
+```bash
+bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check   # validate and exit
+bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml           # serve
+```
+
+`SIGHUP` reloads the zone; `SIGTERM` shuts down gracefully.
+
+- [docs/operations.md](docs/operations.md): running with systemd, reloading, certificates, metrics, delegating a zone
+- [docs/zone-file.md](docs/zone-file.md): what the zone file may contain and how it is checked
+- [examples/](examples/): a full configuration, a zone file and a systemd unit
 
 ## Development
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake test` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+After checking out the repo, run `bin/setup` to install dependencies. Then, run `bundle exec rake` to run the tests, standard and Steep. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+The integration tests use kdig (knot-dnsutils) when it is installed, and skip the DNS over QUIC tests when protocol-quic is not.
 
 ## Contributing
 
