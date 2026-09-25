@@ -126,13 +126,16 @@ module Dohyo
     # @parameter tls [TLS::Certificate, nil] The certificate for tls:// listeners.
     # @parameter max_connections [Integer] The limit shared by every stream listener.
     # @parameter idle_timeout [Numeric] Seconds a stream connection may stay silent (including the TLS handshake).
-    def initialize(zone:, listen:, udp_payload_size:, max_connections:, idle_timeout:, tls: nil, zone_source: nil)
-      raise ConfigError, "tls:// listeners need a certificate" if tls.nil? && listen.any? { it.scheme == "tls" }
+    # @parameter doq_max_streams [Integer] Concurrent streams a DoQ client may open per connection.
+    def initialize(zone:, listen:, udp_payload_size:, max_connections:, idle_timeout:, tls: nil, zone_source: nil, doq_max_streams: 16)
+      raise ConfigError, "tls:// and quic:// listeners need a certificate" if tls.nil? && listen.any? { %w[tls quic].include?(it.scheme) }
 
       @zone = zone
       @zone_source = zone_source
       @listen = listen
+      @tls = tls
       @tls_context = TLS.server_context(tls) if tls
+      @doq_max_streams = doq_max_streams
       @engine = Engine.new(zone_provider: -> { @zone }, udp_payload_size:)
       @wrapper = Wrapper.new
       @limiter = ConnectionLimiter.new(max_connections)
@@ -183,6 +186,9 @@ module Dohyo
       @bound.map { |transport, socket, _| [transport, socket.local_address] }
     end
 
+    # The open TCP, DoT and DoQ connections.
+    def connection_count = @limiter.count
+
     # Whether a graceful shutdown has begun. Stream handlers close their connection after the answer in progress.
     def stopping? = @stopping
 
@@ -205,6 +211,8 @@ module Dohyo
       Console.info(self, "server.starting", version: VERSION, ruby: RUBY_VERSION, listen: @listen.map(&:to_s))
 
       @listen.each do |listen|
+        next start_doq(parent, listen) if listen.scheme == "quic"
+
         endpoint = endpoint_for(listen)
 
         endpoint.bind.each do |socket|
@@ -237,9 +245,14 @@ module Dohyo
       @stopping = true
 
       @bound.each do |transport, socket, task|
-        # UDP has no connections: stopping its task is enough. Closing a stream listener ends its accept loop
-        # while the connections it accepted keep running.
-        (transport == "udp") ? task.stop : socket.close
+        case transport
+        # UDP has no connections: stopping its task is enough.
+        when "udp" then task.stop
+        # DoQ answers each query as soon as it arrives, so its connections can be closed with DOQ_NO_ERROR now.
+        when "doq" then socket.shutdown
+        # Closing a stream listener ends its accept loop while the connections it accepted keep running.
+        else socket.close
+        end
       end
       @waiting.to_a.each(&:close)
 
@@ -252,6 +265,17 @@ module Dohyo
 
     private
 
+    # protocol-quic is loaded only when a quic:// listener is configured, so that UDP, TCP and DoT work without it.
+    def start_doq(parent, listen)
+      require_relative "doq"
+
+      listener = DoQ::Listener.new(host: listen.host, port: listen.port, engine: @engine, limiter: @limiter,
+        idle_timeout: @idle_timeout, max_streams: @doq_max_streams, certificate: @tls)
+      task = parent.async(transient: true) { listener.run }
+      @bound << ["doq", listener, task]
+      Console.info(self, "server.listening", transport: "doq", address: listener.local_address.inspect_sockaddr)
+    end
+
     def endpoint_for(listen)
       case listen.scheme
       when "udp" then IO::Endpoint.udp(listen.host, listen.port, wrapper: @wrapper)
@@ -259,7 +283,6 @@ module Dohyo
       # The TLS handshake runs in the connection's own fiber (SSLServer#start_immediately is false), so one slow
       # client cannot hold up the accept loop.
       when "tls" then IO::Endpoint::SSLEndpoint.new(IO::Endpoint.tcp(listen.host, listen.port, wrapper: @wrapper), ssl_context: @tls_context)
-      else raise ConfigError, "#{listen.scheme}:// is not supported yet"
       end
     end
 

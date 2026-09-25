@@ -94,7 +94,8 @@ module Dohyo
       Sync do |task|
         server = Server.new(
           zone:, zone_source:, listen: config.listen, udp_payload_size: config.udp_payload_size,
-          max_connections: config.max_connections, idle_timeout: config.idle_timeout, tls:
+          max_connections: config.max_connections, idle_timeout: config.idle_timeout, tls:,
+          doq_max_streams: config.doq_max_streams
         ).start(task)
 
         while (byte = reader.read(1))
