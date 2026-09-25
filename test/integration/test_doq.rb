@@ -83,7 +83,7 @@ class TestDoQ < Minitest::Test
       client.wait_for_close
 
       assert_equal 1, server.metrics.value("dohyo_queries_total", transport: "doq", qtype: "AAAA", rcode: "NOERROR")
-      assert_nil server.metrics.value("dohyo_queries_total", transport: "doq", qtype: "A", rcode: "NOERROR")
+      assert_equal 0, server.metrics.value("dohyo_queries_total", transport: "doq", qtype: "A", rcode: "NOERROR"), "zeroed at start, never counted"
       assert_nil server.metrics.value("dohyo_queries_dropped_total", transport: "doq", reason: "too_short")
     end
   end

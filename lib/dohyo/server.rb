@@ -174,6 +174,7 @@ module Dohyo
         raise ZoneError.new("the serial #{zone.serial} is unchanged but the content changed", path: @zone_source.path) unless zone == current
 
         Console.info(self, "zone.reloaded", zone: zone.origin, serial: zone.serial, unchanged: true)
+        @metrics.zone_reload(result: "success")
         return :unchanged
       end
 
@@ -183,9 +184,12 @@ module Dohyo
 
       @zone = zone
       Console.info(self, "zone.reloaded", zone: zone.origin, serial: zone.serial, unchanged: false)
+      @metrics.zone_reload(result: "success")
+      @metrics.zone_loaded(serial: zone.serial)
       :replaced
     rescue ZoneError => error
       Console.error(self, "zone.load_failed", zone: current.origin, path: error.path, reason: error.message)
+      @metrics.zone_reload(result: "failure")
       :failed
     end
 
@@ -217,6 +221,8 @@ module Dohyo
     # Bind every listener and start answering in child tasks of `parent`. Returns once everything is bound.
     def start(parent = Async::Task.current)
       Console.info(self, "server.starting", version: VERSION, ruby: RUBY_VERSION, listen: @listen.map(&:to_s))
+      @metrics.start(transports: @listen.map { TRANSPORTS.fetch(it.scheme) }, version: VERSION, ruby: RUBY_VERSION)
+      @metrics.zone_loaded(serial: @zone.serial)
 
       @listen.each do |listen|
         next start_doq(parent, listen) if listen.scheme == "quic"

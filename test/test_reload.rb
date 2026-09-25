@@ -39,6 +39,14 @@ class TestReload < Minitest::Test
     assert_equal :replaced, @server.reload
     assert_equal 2, @server.zone.serial
     assert_equal ["192.0.2.2"], answer
+    assert_equal 2, @server.metrics.value("dohyo_zone_serial")
+    assert_equal 1, @server.metrics.value("dohyo_zone_reloads_total", result: "success")
+  end
+
+  def test_failures_are_counted
+    File.write(@path, "garbage\n")
+    @server.reload
+    assert_equal 1, @server.metrics.value("dohyo_zone_reloads_total", result: "failure")
   end
 
   def test_same_serial_and_content_is_unchanged

@@ -177,6 +177,16 @@ class TestServerIntegration < Minitest::Test
     end
   end
 
+  def test_start_records_the_zone_and_zeroes_the_query_series
+    with_server do |server|
+      metrics = server.metrics
+      assert_equal 2026092301, metrics.value("dohyo_zone_serial")
+      assert_in_delta Time.now.to_f, metrics.value("dohyo_zone_loaded_timestamp_seconds"), 60
+      assert_equal 0, metrics.value("dohyo_queries_total", transport: "dot", qtype: "A", rcode: "SERVFAIL")
+      assert_equal 1, metrics.value("dohyo_build_info", version: Dohyo::VERSION, ruby: RUBY_VERSION)
+    end
+  end
+
   def test_connections_are_counted
     with_server do |server|
       tcp_exchange(address_of(server, "tcp"), query_bytes("blog.example.com.", IN::A))
