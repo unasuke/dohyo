@@ -4,6 +4,8 @@ require "test_helper"
 require "tmpdir"
 
 class TestBearerTokens < Minitest::Test
+  include DohyoTestHelper
+
   def setup
     @directory = Dir.mktmpdir("dohyo-tokens")
     @path = File.join(@directory, "tokens")
@@ -56,6 +58,13 @@ class TestBearerTokens < Minitest::Test
   def test_missing_file
     error = assert_raises(Dohyo::ConfigError) { Dohyo::BearerTokens.load(File.join(@directory, "none")) }
     assert_match(/cannot read/, error.message)
+  end
+
+  def test_loads_under_the_c_locale_whatever_the_bytes
+    File.binwrite(@path, "secret\n\xff\xfe\n".b)
+    File.chmod(0o600, @path)
+    tokens = with_c_locale { Dohyo::BearerTokens.load(@path) }
+    assert_equal :ok, tokens.check("Bearer secret")
   end
 
   def test_tokens_never_show

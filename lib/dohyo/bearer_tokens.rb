@@ -15,7 +15,8 @@ module Dohyo
       mode = File.stat(path).mode
       raise ConfigError, "#{path} must not be readable by group or others (it is #{format("%04o", mode & 0o7777)}; use 0600 or 0400)" unless (mode & 0o077).zero?
 
-      tokens = File.readlines(path, chomp: true).map(&:strip).reject(&:empty?)
+      # Tokens are compared as bytes, so read them as bytes, whatever the locale.
+      tokens = File.readlines(path, chomp: true, encoding: Encoding::BINARY).map(&:strip).reject(&:empty?)
       raise ConfigError, "#{path} has no token" if tokens.empty?
 
       new(tokens)
