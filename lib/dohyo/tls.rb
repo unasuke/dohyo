@@ -7,7 +7,8 @@ require_relative "errors"
 module Dohyo
   # The server certificate shared by DoT, DoQ and /metrics, and the TLS context built from it.
   module TLS
-    Certificate = Data.define(:certificate, :chain, :key)
+    # `chain_path` and `key_path` are kept for protocol-quic, which reads the files itself.
+    Certificate = Data.define(:certificate, :chain, :key, :chain_path, :key_path)
 
     # Reads and checks the certificate chain and its private key. Unreadable files, a key that does not match the
     # certificate, and a certificate outside its validity period all refuse startup.
@@ -35,7 +36,7 @@ module Dohyo
         raise ConfigError, "the certificate in #{certificate_chain} is valid only from #{certificate.not_before} to #{certificate.not_after}"
       end
 
-      Certificate.new(certificate:, chain:, key:)
+      Certificate.new(certificate:, chain:, key:, chain_path: certificate_chain, key_path: private_key)
     end
 
     # A server context: TLS 1.3 only, no client certificates, no compression, the default cipher suites.
