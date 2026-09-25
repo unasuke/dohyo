@@ -1,0 +1,39 @@
+# An example dohyo configuration: ns.example.com serving sub.example.com.
+# Unknown keys are errors. Check with: dohyo --config /etc/dohyo/dohyo.yml --check
+
+zone:
+  origin: sub.example.com.
+  file: /etc/dohyo/zones/sub.example.com.zone
+
+# scheme://host:port. IPv6 sockets are IPv6-only, so list IPv4 and IPv6 separately.
+listen:
+  - udp://0.0.0.0:53
+  - udp://[::]:53
+  - tcp://0.0.0.0:53
+  - tcp://[::]:53
+  - tls://0.0.0.0:853      # DNS over TLS
+  - tls://[::]:853
+  - quic://0.0.0.0:853     # DNS over QUIC (needs the protocol-quic fork)
+  - quic://[::]:853
+
+# The certificate for the name server (ns.example.com), used by DoT, DoQ and /metrics. Restart dohyo to replace it.
+tls:
+  certificate_chain: /etc/dohyo/tls/fullchain.pem
+  private_key: /etc/dohyo/tls/privkey.pem
+
+edns:
+  udp_payload_size: 1232    # 512..4096
+
+connection:
+  idle_timeout: 10          # seconds; TCP, DoT and DoQ
+  max_connections: 256      # TCP, DoT and DoQ together
+
+doq:
+  max_streams_per_connection: 16
+
+# Leave this section out to disable /metrics. Beyond loopback it is HTTPS with a bearer token.
+metrics:
+  listen:
+    - "0.0.0.0:9153"
+    - "[::]:9153"
+  bearer_token_file: /etc/dohyo/secrets/metrics-tokens   # one token per line, mode 0600 or 0400
