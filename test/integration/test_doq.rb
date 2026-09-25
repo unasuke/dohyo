@@ -35,6 +35,7 @@ class TestDoQ < Minitest::Test
         udp_payload_size: 1232, max_connections:, idle_timeout:, tls:)
       server.start(task)
       @address = server.bound_addresses.first.last
+      @server = server
       yield server
     ensure
       @clients.each(&:stop)
@@ -157,6 +158,8 @@ class TestDoQ < Minitest::Test
       # The server counts the connection when it sees the handshake complete, a little after the client does:
       assert_equal 1, eventually(1) { server.connection_count }
       assert_equal 0, eventually(0, seconds: 3) { server.connection_count }
+      assert_equal 1, server.metrics.value("dohyo_connections_opened_total", transport: "doq")
+      assert_equal 0, server.metrics.value("dohyo_connections_active", transport: "doq")
     end
   end
 
@@ -165,6 +168,8 @@ class TestDoQ < Minitest::Test
       connect
       second = connect
       assert_equal [:application, Dohyo::DoQ::EXCESSIVE_LOAD], second.wait_for_close
+      assert_equal 1, eventually(1) { @server.metrics.value("dohyo_connections_closed_total", transport: "doq", reason: "limit") }
+      assert_equal 1, @server.metrics.value("dohyo_connections_active", transport: "doq")
     end
   end
 

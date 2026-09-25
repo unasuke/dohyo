@@ -166,9 +166,27 @@ class TestServerIntegration < Minitest::Test
         sleep 0.05 # The first connection's slot is released asynchronously.
       end
       assert_equal 1, responses&.size
+
+      metrics = server.metrics
+      assert_equal 1, metrics.value("dohyo_connections_closed_total", transport: "tcp", reason: "limit")
+      assert_equal 1, metrics.value("dohyo_connections_closed_total", transport: "dot", reason: "limit")
+      assert_operator metrics.value("dohyo_connections_opened_total", transport: "tcp"), :>=, 3
     ensure
       first&.close
       second&.close
+    end
+  end
+
+  def test_connections_are_counted
+    with_server do |server|
+      tcp_exchange(address_of(server, "tcp"), query_bytes("blog.example.com.", IN::A))
+      metrics = server.metrics
+      deadline = monotonic + 1
+      sleep 0.01 until metrics.value("dohyo_connections_active", transport: "tcp").to_i.zero? || monotonic > deadline
+
+      assert_equal 1, metrics.value("dohyo_connections_opened_total", transport: "tcp")
+      assert_equal 1, metrics.value("dohyo_connections_closed_total", transport: "tcp", reason: "peer")
+      assert_equal 0, metrics.value("dohyo_connections_active", transport: "tcp")
     end
   end
 

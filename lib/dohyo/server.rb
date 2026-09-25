@@ -73,7 +73,8 @@ module Dohyo
       # - A failed TLS handshake is an expected event (scanners, TLS 1.2 clients, clients giving up) rather than an
       #   unhandled exception in the connection's task, which Async would report as a warning with a backtrace.
       # - Connections beyond `limiter` are closed right after accept, before any TLS handshake.
-      def accept(server, timeout: nil, limiter: nil, transport: nil, **, &block)
+      # - Connections are counted in `metrics` from accept on, so that refused ones and failed handshakes count too.
+      def accept(server, timeout: nil, limiter: nil, transport: nil, metrics: nil, **, &block)
         loop do
           socket, address = begin
             socket_accept(server)
@@ -84,16 +85,19 @@ module Dohyo
             raise
           end
 
+          metrics&.connection_opened(transport:)
+
           if limiter && !limiter.acquire
             socket.close
             Console.debug(self, "connection.closed", transport:, reason: "limit", queries: 0, duration: 0)
+            metrics&.connection_closed(transport:, reason: "limit")
             next
           end
 
           set_timeout(socket, timeout) if timeout
 
           schedule do
-            accept_connection(socket, address, &block)
+            accept_connection(socket, address, transport:, metrics:, &block)
           ensure
             limiter&.release
           end
@@ -102,13 +106,14 @@ module Dohyo
 
       private
 
-      def accept_connection(socket, address)
+      def accept_connection(socket, address, transport:, metrics:)
         if socket.respond_to?(:start)
           begin
             socket.start
           rescue OpenSSL::SSL::SSLError, IOError, SystemCallError => error
             Console.debug(self, "connection.handshake_failed", error:)
             socket.close
+            metrics&.connection_closed(transport:, reason: "error")
             return
           end
         end
@@ -292,7 +297,7 @@ module Dohyo
     def run_handler(transport, socket)
       case transport
       when "udp" then DatagramHandler.new(self, socket, engine: @engine, transport:).run(@wrapper)
-      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper, limiter: @limiter, transport:, timeout: @idle_timeout)
+      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper, limiter: @limiter, transport:, timeout: @idle_timeout, metrics: @metrics)
       end
     end
   end

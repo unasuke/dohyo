@@ -118,6 +118,7 @@ module Dohyo
     ensure
       @server.connection_closed(socket)
       socket.close unless socket.closed?
+      @server.metrics.connection_closed(transport: @transport, reason:)
       Console.debug(self, "connection.closed", transport: @transport, reason:, queries:,
         duration: Process.clock_gettime(Process::CLOCK_MONOTONIC) - opened_at)
     end

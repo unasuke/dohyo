@@ -155,6 +155,7 @@ module Dohyo
         connection.opened_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         connection.queries = 0
         @connections << connection
+        @metrics.connection_opened(transport: TRANSPORT)
 
         # Both start at once and wait almost immediately, so they return here before the packet is processed.
         @task.async(transient: true) { serve(connection) }
@@ -166,7 +167,9 @@ module Dohyo
         @limiter.release if connection.counted
         connection.counted = false
 
-        Console.debug(self, "connection.closed", transport: TRANSPORT, reason: connection.close_reason || "peer",
+        reason = connection.close_reason || "peer"
+        @metrics.connection_closed(transport: TRANSPORT, reason:)
+        Console.debug(self, "connection.closed", transport: TRANSPORT, reason:,
           queries: connection.queries, duration: Process.clock_gettime(Process::CLOCK_MONOTONIC) - connection.opened_at)
       end
 
