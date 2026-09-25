@@ -180,6 +180,24 @@ class TestLoader < Minitest::Test
     assert_zone_error(/appears more than once/, "@ IN HTTPS 1 . dohpath=/a key7=/b\n")
   end
 
+  def test_load_reads_utf8_comments_under_the_c_locale
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sub.example.com.zone")
+      File.write(path, HEADER.sub("$TTL 3600", "; ゾーンのコメント\n$TTL 3600"))
+      zone = with_c_locale { Dohyo::Loader.load(origin: ORIGIN, path:) }
+      assert_equal 1, zone.serial
+    end
+  end
+
+  def test_load_rejects_a_file_that_is_not_utf8
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sub.example.com.zone")
+      File.binwrite(path, HEADER + "; \xff\xfe\n".b)
+      error = assert_raises(Dohyo::ZoneError) { Dohyo::Loader.load(origin: ORIGIN, path:) }
+      assert_match(/not valid UTF-8/, error.message)
+    end
+  end
+
   def test_load_reads_a_file
     Dir.mktmpdir do |dir|
       path = File.join(dir, "blog.example.com.zone")

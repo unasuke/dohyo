@@ -4,6 +4,8 @@ require "test_helper"
 require "tmpdir"
 
 class TestConfig < Minitest::Test
+  include DohyoTestHelper
+
   MINIMAL = <<~YAML
     zone:
       origin: blog.example.com.
@@ -163,6 +165,24 @@ class TestConfig < Minitest::Test
   def test_load_reports_an_unreadable_file
     error = assert_raises(Dohyo::ConfigError) { Dohyo::Config.load("/nonexistent/dohyo.yml") }
     assert_match(/cannot read/, error.message)
+  end
+
+  def test_load_reads_utf8_comments_under_the_c_locale
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "dohyo.yml")
+      File.write(path, "# 設定のコメント\n" + MINIMAL)
+      config = with_c_locale { Dohyo::Config.load(path) }
+      assert_equal "blog.example.com.", config.zone_origin
+    end
+  end
+
+  def test_load_rejects_a_file_that_is_not_utf8
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "dohyo.yml")
+      File.binwrite(path, "# \xff\n".b + MINIMAL)
+      error = assert_raises(Dohyo::ConfigError) { Dohyo::Config.load(path) }
+      assert_match(/not valid UTF-8/, error.message)
+    end
   end
 
   def test_load_reads_a_file

@@ -46,6 +46,17 @@ module DohyoTestHelper
     section.map { |name, ttl, record| [name.to_s, ttl, record] }
   end
 
+  # Runs the block as under the C locale, where Ruby reads files as US-ASCII unless told otherwise.
+  def with_c_locale
+    verbose, $VERBOSE = $VERBOSE, nil
+    previous = Encoding.default_external
+    Encoding.default_external = Encoding::US_ASCII
+    yield
+  ensure
+    Encoding.default_external = previous
+    $VERBOSE = verbose
+  end
+
   def assert_negative_soa(response)
     assert_equal 1, response.authority.size
     name, ttl, soa = response.authority.first

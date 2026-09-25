@@ -11,11 +11,13 @@ module Dohyo
   # that is silently ignored is worse than refusing to start.
   Config = Data.define(:zone_origin, :zone_file, :listen, :tls, :udp_payload_size, :idle_timeout, :max_connections, :doq_max_streams, :metrics) do
     def self.load(path)
+      # UTF-8 explicitly, whatever the locale; see Loader.load.
       text = begin
-        File.read(path)
+        File.read(path, encoding: Encoding::UTF_8)
       rescue SystemCallError => error
         raise ConfigError, "cannot read #{path}: #{error.message}"
       end
+      raise ConfigError, "#{path} is not valid UTF-8" unless text.valid_encoding?
 
       parse(text)
     end

@@ -51,11 +51,14 @@ module Dohyo
     # @parameter path [String] The zone file.
     # @returns [Zone]
     def self.load(origin:, path:)
+      # UTF-8 explicitly: under the C locale (as under systemd on a minimal system) Ruby would read the file as
+      # US-ASCII, and a comment in any other language would break parsing.
       text = begin
-        File.read(path)
+        File.read(path, encoding: Encoding::UTF_8)
       rescue SystemCallError => error
         raise ZoneError.new("cannot read the zone file: #{error.message}", path:)
       end
+      raise ZoneError.new("the zone file is not valid UTF-8", path:) unless text.valid_encoding?
 
       parse(text, origin:, path:)
     end
