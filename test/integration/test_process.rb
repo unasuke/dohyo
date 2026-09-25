@@ -5,6 +5,8 @@ require "json"
 require "open3"
 require "timeout"
 require "tmpdir"
+require "net/http"
+require "support/certificates"
 
 # Runs exe/dohyo as a child process and drives it with signals.
 class TestProcess < Minitest::Test
@@ -48,34 +50,44 @@ class TestProcess < Minitest::Test
     ZONE
   end
 
-  # Starts the server and returns the UDP address it bound, read from its "server.listening" log.
-  def start_server
+  # Starts the server and returns the UDP address it bound, read from its "server.listening" log. The ports of the
+  # other transports named in `also` are kept in @ports.
+  def start_server(also: [])
     _stdin, @output, thread = Open3.popen2e({"CONSOLE_OUTPUT" => "Serialized"}, "ruby", EXE, "--config", @config)
     @pid = thread.pid
     @thread = thread
+    @ports = {}
+    waiting = ["udp", *also]
 
     Timeout.timeout(15) do
       @output.each_line do |line|
-        event = begin
-          JSON.parse(line)
-        rescue
-          next
-        end
-        next unless event["message"] == "server.listening" && event["transport"] == "udp"
+        event = parse_event(line)
+        next unless event && event["message"] == "server.listening" && waiting.include?(event["transport"])
 
-        # Keep reading the log, so that the child never blocks on a full pipe:
-        Thread.new {
-          begin
-            @output.each_line { nil }
-          rescue
-            IOError
-          end
-        }
-        host, port = event["address"].split(":")
-        return Addrinfo.udp(host, Integer(port))
+        @ports[event["transport"]] = Integer(event["address"].split(":").last)
+        waiting.delete(event["transport"])
+        next unless waiting.empty?
+
+        drain_output
+        return Addrinfo.udp("127.0.0.1", @ports.fetch("udp"))
       end
     end
     flunk "the server did not start"
+  end
+
+  def parse_event(line)
+    JSON.parse(line)
+  rescue JSON::ParserError
+    nil
+  end
+
+  # Keep reading the log, so that the child never blocks on a full pipe.
+  def drain_output
+    Thread.new do
+      @output.each_line { nil }
+    rescue IOError
+      nil
+    end
   end
 
   def answer(address)
@@ -115,6 +127,53 @@ class TestProcess < Minitest::Test
     Process.kill(:TERM, @pid)
     status = Timeout.timeout(10) { @thread.value }
     assert_predicate status, :success?
+    @pid = nil
+  end
+
+  def test_metrics_over_https_and_token_reload
+    certificates = TestCertificates.write(File.join(@directory, "tls").tap { Dir.mkdir(it) })
+    tokens = File.join(@directory, "tokens")
+    old_token = "old-token-0123456789abcdef0123456789abcdef"
+    new_token = "new-token-0123456789abcdef0123456789abcdef"
+    File.write(tokens, "#{old_token}\n")
+    File.chmod(0o600, tokens)
+    File.write(@config, File.read(@config) + <<~YAML)
+      tls:
+        certificate_chain: #{certificates.certificate_chain}
+        private_key: #{certificates.private_key}
+      metrics:
+        listen: ["0.0.0.0:0"]
+        bearer_token_file: #{tokens}
+    YAML
+
+    start_server(also: ["metrics"])
+    scrape = lambda do |token|
+      http = Net::HTTP.new("localhost", @ports.fetch("metrics"))
+      http.use_ssl = true
+      http.ca_file = certificates.ca
+      request = Net::HTTP::Get.new("/metrics")
+      request["Authorization"] = "Bearer #{token}"
+      http.request(request)
+    end
+
+    response = scrape.call(old_token)
+    assert_equal "200", response.code
+    assert_includes response.body, "dohyo_zone_serial 1\n"
+    assert_equal "401", scrape.call(new_token).code
+
+    File.write(tokens, "#{new_token}\n")
+    Process.kill(:HUP, @pid)
+    assert_equal "200", eventually("200") { scrape.call(new_token).code }
+    assert_equal "401", scrape.call(old_token).code
+
+    # An empty token file keeps the previous tokens:
+    File.write(tokens, "\n")
+    Process.kill(:HUP, @pid)
+    sleep 0.2
+    assert_equal "200", scrape.call(new_token).code
+
+    Process.kill(:TERM, @pid)
+    assert_predicate Timeout.timeout(10) { @thread.value }, :success?
     @pid = nil
   end
 

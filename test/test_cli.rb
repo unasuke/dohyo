@@ -72,6 +72,26 @@ class TestCLI < Minitest::Test
     assert_match(/does not match/, @stderr.string)
   end
 
+  def write_tokens(content, mode: 0o600)
+    path = File.join(@directory, "tokens")
+    File.write(path, content)
+    File.chmod(mode, path)
+    path
+  end
+
+  def test_check_counts_the_metrics_tokens_without_showing_them
+    config = write_config("metrics:\n  listen: ['127.0.0.1:9153']\n  bearer_token_file: #{write_tokens("first-token\nsecond-token\n")}\n")
+    assert_equal 0, run_cli("--config", config, "--check")
+    assert_equal "blog.example.com. 2026092301\nmetrics tokens: 2\n", @stdout.string
+  end
+
+  def test_check_rejects_a_token_file_readable_by_others
+    config = write_config("metrics:\n  listen: ['127.0.0.1:9153']\n  bearer_token_file: #{write_tokens("first-token\n", mode: 0o644)}\n")
+    assert_equal 1, run_cli("--config", config, "--check")
+    assert_match(/readable by group or others/, @stderr.string)
+    refute_includes @stderr.string, "first-token"
+  end
+
   def test_invalid_configuration
     assert_equal 1, run_cli("--config", write_config("bogus: 1\n"), "--check")
     assert_match(/unknown key bogus/, @stderr.string)
