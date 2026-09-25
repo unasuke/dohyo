@@ -11,7 +11,7 @@ class TestConsistency < Minitest::Test
   # Comments are dropped naively at the first "#". A "#" inside a string literal only removes more text, which
   # makes the check laxer, never stricter.
   def code_of(path)
-    File.readlines(path).map { it.sub(/#.*/, "") }.join
+    File.readlines(path, encoding: Encoding::UTF_8).map { it.sub(/#.*/, "") }.join
   end
 
   PURE_FILES.each do |path|
