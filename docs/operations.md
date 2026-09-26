@@ -22,8 +22,10 @@ Install Ruby 4.0.7 under `/usr/local` with [ruby-build](https://github.com/rbenv
 ```sh
 git clone https://github.com/rbenv/ruby-build /tmp/ruby-build
 sudo /tmp/ruby-build/install.sh
-sudo ruby-build 4.0.7 /usr/local/ruby-4.0.7
+sudo TMPDIR=/var/tmp ruby-build 4.0.7 /usr/local/ruby-4.0.7
 ```
+
+Debian 13 mounts `/tmp` as tmpfs, sized at half the memory, which is too small to build Ruby on a small instance; `TMPDIR=/var/tmp` builds on disk instead.
 
 dohyo reads the configuration and the zone as UTF-8 whatever the locale, so the minimal system's C locale is fine.
 

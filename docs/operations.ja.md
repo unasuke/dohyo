@@ -22,8 +22,10 @@ Ruby 4.0.7 は、[ruby-build](https://github.com/rbenv/ruby-build) で `/usr/loc
 ```sh
 git clone https://github.com/rbenv/ruby-build /tmp/ruby-build
 sudo /tmp/ruby-build/install.sh
-sudo ruby-build 4.0.7 /usr/local/ruby-4.0.7
+sudo TMPDIR=/var/tmp ruby-build 4.0.7 /usr/local/ruby-4.0.7
 ```
+
+Debian 13 は `/tmp` をメモリの半分の大きさの tmpfs としてマウントするので、小さなインスタンスでは Ruby のビルドに足りません。`TMPDIR=/var/tmp` で、ディスク上でビルドします。
 
 dohyo は設定とゾーンをロケールによらず UTF-8 として読むので、最小構成の C ロケールのままで構いません。
 
