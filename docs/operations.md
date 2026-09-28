@@ -45,7 +45,7 @@ cd /opt/dohyo
 
 Run `git` and `bundle` in `/opt/dohyo` as `deploy`, without sudo: git refuses to work in a repository owned by another user.
 
-DNS over QUIC needs the `ruby-stream-io-bindings` branch of [unasuke/protocol-quic](https://github.com/unasuke/protocol-quic), which the Gemfile refers to; `bundle install` builds it. Without a `quic://` listener, dohyo does not load it.
+DNS over QUIC needs the `ruby-stream-io-bindings` branch of [unasuke/socketry-protocol-quic](https://github.com/unasuke/socketry-protocol-quic), which the Gemfile refers to; `bundle install` builds it. Without a `quic://` listener, dohyo does not load it.
 
 ## Configuring
 

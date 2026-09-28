@@ -14,7 +14,7 @@ cd dohyo
 bundle install
 ```
 
-DNS over QUIC uses a fork of [protocol-quic](https://github.com/unasuke/protocol-quic) (branch `ruby-stream-io-bindings`), a native extension built on ngtcp2. Building it needs clang (`clang++`), cmake, pkg-config and the OpenSSL headers; on Debian 13 also `libzstd-dev`, and on Ubuntu 26.04 both `libzstd-dev` and `libjitterentropy3-dev`. Without a `quic://` listener it is never loaded.
+DNS over QUIC uses a fork of protocol-quic ([unasuke/socketry-protocol-quic](https://github.com/unasuke/socketry-protocol-quic), branch `ruby-stream-io-bindings`), a native extension built on ngtcp2. Building it needs clang (`clang++`), cmake, pkg-config and the OpenSSL headers; on Debian 13 also `libzstd-dev`, and on Ubuntu 26.04 both `libzstd-dev` and `libjitterentropy3-dev`. Without a `quic://` listener it is never loaded.
 
 See [docs/operations.md](docs/operations.md) for the full list of packages on Debian 13 and for installing on a server with systemd.
 

@@ -45,7 +45,7 @@ cd /opt/dohyo
 
 `/opt/dohyo` での `git` と `bundle` は、sudo を付けずに `deploy` で実行します。git は、ほかのユーザーが持つリポジトリでは動きません。
 
-DNS over QUIC には、Gemfile が参照している [unasuke/protocol-quic](https://github.com/unasuke/protocol-quic) の `ruby-stream-io-bindings` ブランチが要ります。`bundle install` がビルドします。`quic://` の待ち受けが無ければ、dohyo はこれを読み込みません。
+DNS over QUIC には、Gemfile が参照している [unasuke/socketry-protocol-quic](https://github.com/unasuke/socketry-protocol-quic) の `ruby-stream-io-bindings` ブランチが要ります。`bundle install` がビルドします。`quic://` の待ち受けが無ければ、dohyo はこれを読み込みません。
 
 ## 設定
 
