@@ -23,8 +23,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install kdig for the integration tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends knot-dnsutils
+      - name: Install kdig for the integration tests, and the libraries for building protocol-quic
+        run: |
+          sudo apt-get update
+          packages=knot-dnsutils
+          # rugged, which protocol-quic's build tool depends on, links OpenSSL statically. From Ubuntu 26.04 on, that
+          # needs libjitterentropy.a and libzstd; Ubuntu 24.04 has no libjitterentropy3-dev.
+          if pkg-config --static --libs libcrypto | grep -q jitterentropy; then
+            packages="$packages libjitterentropy3-dev libzstd-dev"
+          fi
+          sudo apt-get install -y --no-install-recommends $packages
       - name: Set up Ruby
         uses: ruby/setup-ruby@e8944e80fb94b20106697132f8c20c665fab29e9 # v1.325.0
         with:
