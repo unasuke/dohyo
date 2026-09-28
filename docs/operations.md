@@ -31,17 +31,19 @@ dohyo reads the configuration and the zone as UTF-8 whatever the locale, so the 
 
 To upgrade Ruby later, install the new version next to it and change the paths in the systemd unit.
 
-Create a user and check out dohyo:
+Create a user for the service, and check out dohyo as the account you administer the server with (`deploy` here). The code belongs to that account and `dohyo` can only read it, so the server cannot change its own code:
 
 ```sh
-sudo useradd --system --home-dir /opt/dohyo --shell /usr/sbin/nologin dohyo
-sudo git clone https://github.com/unasuke/dohyo /opt/dohyo
-sudo chown -R dohyo:dohyo /opt/dohyo
+sudo useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin dohyo
+sudo install -d -o deploy -g deploy -m 0755 /opt/dohyo
+git clone https://github.com/unasuke/dohyo /opt/dohyo
 cd /opt/dohyo
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle config set --local deployment true
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle config set --local without development
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle install
+/usr/local/ruby-4.0.7/bin/bundle config set --local deployment true
+/usr/local/ruby-4.0.7/bin/bundle config set --local without development
+/usr/local/ruby-4.0.7/bin/bundle install
 ```
+
+Run `git` and `bundle` in `/opt/dohyo` as `deploy`, without sudo: git refuses to work in a repository owned by another user.
 
 DNS over QUIC needs the `ruby-stream-io-bindings` branch of [unasuke/protocol-quic](https://github.com/unasuke/protocol-quic), which the Gemfile refers to; `bundle install` builds it. Without a `quic://` listener, dohyo does not load it.
 
@@ -55,7 +57,7 @@ Check everything without starting the server:
 sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check
 ```
 
-It loads the configuration, the zone, the certificate and the metrics token file, then prints the zone's origin and serial and the number of tokens (never the tokens). The exit status is 0 on success, 1 when something is invalid, and 2 for bad arguments.
+It runs as `dohyo`, since only `dohyo` can read the private key and the metrics token file. It loads the configuration, the zone, the certificate and the metrics token file, then prints the zone's origin and serial and the number of tokens (never the tokens). The exit status is 0 on success, 1 when something is invalid, and 2 for bad arguments.
 
 ## Running with systemd
 
@@ -93,8 +95,8 @@ A reload that fails keeps the previous zone. Tell success from failure in the lo
 
 ```sh
 cd /opt/dohyo
-sudo -u dohyo git pull
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle install
+git pull
+/usr/local/ruby-4.0.7/bin/bundle install
 sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check && sudo systemctl restart dohyo
 ```
 

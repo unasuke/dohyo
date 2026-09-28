@@ -31,17 +31,19 @@ dohyo は設定とゾーンをロケールによらず UTF-8 として読むの�
 
 あとで Ruby を上げるときは、新しい版を隣のディレクトリに入れ、systemd のユニットのパスを書き換えます。
 
-実行用のユーザーを作り、dohyo をチェックアウトします。
+実行用のユーザーを作り、dohyo は、サーバの管理に使うアカウント（ここでは `deploy`）でチェックアウトします。コードはそのアカウントのもので、`dohyo` は読むことしかできません。サーバが自分のコードを書き換えられないようにするためです。
 
 ```sh
-sudo useradd --system --home-dir /opt/dohyo --shell /usr/sbin/nologin dohyo
-sudo git clone https://github.com/unasuke/dohyo /opt/dohyo
-sudo chown -R dohyo:dohyo /opt/dohyo
+sudo useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin dohyo
+sudo install -d -o deploy -g deploy -m 0755 /opt/dohyo
+git clone https://github.com/unasuke/dohyo /opt/dohyo
 cd /opt/dohyo
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle config set --local deployment true
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle config set --local without development
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle install
+/usr/local/ruby-4.0.7/bin/bundle config set --local deployment true
+/usr/local/ruby-4.0.7/bin/bundle config set --local without development
+/usr/local/ruby-4.0.7/bin/bundle install
 ```
+
+`/opt/dohyo` での `git` と `bundle` は、sudo を付けずに `deploy` で実行します。git は、ほかのユーザーが持つリポジトリでは動きません。
 
 DNS over QUIC には、Gemfile が参照している [unasuke/protocol-quic](https://github.com/unasuke/protocol-quic) の `ruby-stream-io-bindings` ブランチが要ります。`bundle install` がビルドします。`quic://` の待ち受けが無ければ、dohyo はこれを読み込みません。
 
@@ -55,7 +57,7 @@ DNS over QUIC には、Gemfile が参照している [unasuke/protocol-quic](htt
 sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check
 ```
 
-設定、ゾーン、証明書、メトリクスのトークンファイルを読み込み、ゾーンの原点とシリアル、トークンの本数を出します（トークンそのものは出しません）。終了コードは、成功で 0、どれかが不正なら 1、引数の誤りなら 2 です。
+秘密鍵とメトリクスのトークンファイルを読めるのは `dohyo` だけなので、`dohyo` ユーザーで実行します。設定、ゾーン、証明書、メトリクスのトークンファイルを読み込み、ゾーンの原点とシリアル、トークンの本数を出します（トークンそのものは出しません）。終了コードは、成功で 0、どれかが不正なら 1、引数の誤りなら 2 です。
 
 ## systemd で動かす
 
@@ -93,8 +95,8 @@ systemd の下では 1 件ずつ 1 行の JSON で、端末ならテキストで
 
 ```sh
 cd /opt/dohyo
-sudo -u dohyo git pull
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle install
+git pull
+/usr/local/ruby-4.0.7/bin/bundle install
 sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check && sudo systemctl restart dohyo
 ```
 
