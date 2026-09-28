@@ -13,7 +13,7 @@ sudo apt-get install -y --no-install-recommends git curl ca-certificates build-e
   libssl-dev libyaml-dev zlib1g-dev libffi-dev pkg-config cmake clang libzstd-dev
 ```
 
-1 行目と、`libssl-dev`・`libyaml-dev`・`zlib1g-dev`・`libffi-dev` は Ruby のビルドに使います。protocol-quic（DNS over QUIC）は、g++ ではなく `clang++` と `cmake` でビルドします。そのビルドの道具が依存する rugged は OpenSSL を静的にリンクするので、Debian では `libzstd-dev` が、最近の Ubuntu ではさらに `libjitterentropy3-dev` が要ります。下の確認に使う kdig は `knot-dnsutils` に入っています。
+1 行目と、`libssl-dev`・`libyaml-dev`・`zlib1g-dev`・`libffi-dev` は Ruby のビルドに使います。protocol-quic（DNS over QUIC）は、g++ ではなく `clang++` と `cmake` でビルドします。そのビルドの道具が依存する rugged は OpenSSL を静的にリンクするので、OpenSSL が使うライブラリ（`pkg-config --static --libs libcrypto` で分かります）の開発用パッケージが要ります。Debian 13 では `libzstd-dev`、Ubuntu 26.04 では `libzstd-dev` と `libjitterentropy3-dev` の両方です。下の確認に使う kdig は `knot-dnsutils` に入っています。
 
 小さなインスタンスでは、ビルドの間だけ swap を足してください。1 つずつビルドするならプロセスは小さいのですが、CPU が複数あると Ruby も protocol-quic も並列にコンパイルします。
 

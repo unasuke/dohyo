@@ -13,7 +13,7 @@ sudo apt-get install -y --no-install-recommends git curl ca-certificates build-e
   libssl-dev libyaml-dev zlib1g-dev libffi-dev pkg-config cmake clang libzstd-dev
 ```
 
-The first line and `libssl-dev`, `libyaml-dev`, `zlib1g-dev` and `libffi-dev` build Ruby. protocol-quic (DNS over QUIC) is built with `clang++` (not g++) and `cmake`. Its build tool depends on rugged, whose build links OpenSSL statically: on Debian that needs `libzstd-dev`, and on recent Ubuntu `libjitterentropy3-dev` as well. `knot-dnsutils` provides kdig for the checks below.
+The first line and `libssl-dev`, `libyaml-dev`, `zlib1g-dev` and `libffi-dev` build Ruby. protocol-quic (DNS over QUIC) is built with `clang++` (not g++) and `cmake`. Its build tool depends on rugged, whose build links OpenSSL statically and so needs the development packages of the libraries OpenSSL uses (`pkg-config --static --libs libcrypto` lists them): `libzstd-dev` on Debian 13, and both `libzstd-dev` and `libjitterentropy3-dev` on Ubuntu 26.04. `knot-dnsutils` provides kdig for the checks below.
 
 On a small instance, add swap for the build; the processes are small when built one at a time, but Ruby and protocol-quic compile in parallel when there are several CPUs.
 
