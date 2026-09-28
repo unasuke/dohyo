@@ -86,7 +86,7 @@ systemd の下では 1 件ずつ 1 行の JSON で、端末ならテキストで
 ## ゾーンを変える
 
 1. ゾーンファイルを書き換え、SOA のシリアルを上げます。
-2. 検査します：`bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check`
+2. `/opt/dohyo` で検査します：`sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check`
 3. `sudo systemctl reload dohyo`
 
 再読み込みに失敗したときは、それまでのゾーンで答え続けます。成功したか失敗したかは、ログ（`zone.reloaded`、または理由つきの `zone.load_failed`）か、メトリクス（`dohyo_zone_serial`、`dohyo_zone_reloads_total{result="failure"}`）で見分けます。シリアルが同じまま中身が変わっていたら、わざと拒否します。シリアルの上げ忘れに気づけるようにするためです。

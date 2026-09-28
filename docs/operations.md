@@ -86,7 +86,7 @@ Under systemd each event is one line of JSON; on a terminal it is text. Set `CON
 ## Changing the zone
 
 1. Edit the zone file and raise the SOA serial.
-2. Check it: `bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check`.
+2. Check it in `/opt/dohyo`: `sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check`.
 3. `sudo systemctl reload dohyo`.
 
 A reload that fails keeps the previous zone. Tell success from failure in the log (`zone.reloaded` or `zone.load_failed` with the reason) or in the metrics (`dohyo_zone_serial`, `dohyo_zone_reloads_total{result="failure"}`). The same serial with different content is refused on purpose: it catches a forgotten serial bump.
