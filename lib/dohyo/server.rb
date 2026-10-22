@@ -45,6 +45,9 @@ module Dohyo
     # net.ipv6.bindv6only sysctl; IPv4 is listened on separately. Otherwise the same as IO::Endpoint::Wrapper#bind
     # (io-endpoint 0.18.0), which has no hook between creating and binding the socket.
     class Wrapper < IO::Endpoint::Wrapper
+      # Seconds to wait before accepting again after running out of file descriptors or memory.
+      ACCEPT_RETRY_DELAY = 1
+
       def bind(local_address, protocol: 0, reuse_address: true, backlog: Socket::SOMAXCONN, **, &block)
         socket = nil
 
@@ -74,6 +77,8 @@ module Dohyo
       #   unhandled exception in the connection's task, which Async would report as a warning with a backtrace.
       # - Connections beyond `limiter` are closed right after accept, before any TLS handshake.
       # - Connections are counted in `metrics` from accept on, so that refused ones and failed handshakes count too.
+      # - Running out of file descriptors or memory pauses accepting rather than ending the loop, which would stop
+      #   the listener until a restart while the process kept running.
       def accept(server, timeout: nil, limiter: nil, transport: nil, metrics: nil, **, &block)
         loop do
           socket, address = begin
@@ -83,6 +88,14 @@ module Dohyo
             return if server.closed?
 
             raise
+          rescue Errno::EMFILE, Errno::ENFILE, Errno::ENOBUFS, Errno::ENOMEM => error
+            # The connection stays in the backlog; retrying at once would spin while the listening socket is readable.
+            Console.warn(self, "server.accept_failed", transport:, error:)
+            sleep ACCEPT_RETRY_DELAY
+            next
+          rescue Errno::ECONNABORTED
+            # The peer reset the connection before it was accepted.
+            next
           end
 
           metrics&.connection_opened(transport:)

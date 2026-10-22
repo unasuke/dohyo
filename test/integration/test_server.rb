@@ -4,6 +4,8 @@ require "test_helper"
 require "async"
 require "async/dns"
 require "open3"
+require "console/capture"
+require "console/logger"
 require "support/certificates"
 
 # Starts Dohyo::Server on loopback ports chosen by the OS and queries it over real sockets.
@@ -175,6 +177,54 @@ class TestServerIntegration < Minitest::Test
       first&.close
       second&.close
     end
+  end
+
+  # Runs Server::Wrapper#accept on a loopback listener whose first accept raises `error`, then connects once.
+  # @returns [Boolean] Whether the connection reached the block.
+  def accept_once_after(error)
+    wrapper = Dohyo::Server::Wrapper.new
+    failures = [error]
+    wrapper.define_singleton_method(:socket_accept) do |server|
+      raise failures.shift unless failures.empty?
+
+      super(server)
+    end
+
+    listener = Socket.new(:INET, :STREAM)
+    listener.bind(Addrinfo.tcp("127.0.0.1", 0))
+    listener.listen(8)
+    accepted = Thread::Queue.new
+
+    Sync do |task|
+      acceptor = task.async { wrapper.accept(listener, transport: "tcp") { |socket, _| accepted << true and socket.close } }
+      client = Socket.tcp("127.0.0.1", listener.local_address.ip_port)
+      accepted.pop(timeout: 3) || false
+    ensure
+      client&.close
+      acceptor&.stop
+    end
+  ensure
+    listener&.close
+  end
+
+  def capture_console
+    capture = Console::Capture.new
+    previous = Console.logger
+    Console.logger = Console::Logger.new(capture, level: :debug)
+    yield
+    capture.map(&:inspect).join("\n")
+  ensure
+    Console.logger = previous
+  end
+
+  def test_accept_goes_on_after_running_out_of_file_descriptors
+    logged = capture_console { assert accept_once_after(Errno::EMFILE.new), "accepted once the descriptor is back" }
+    assert_match(/server\.accept_failed/, logged)
+  end
+
+  def test_accept_skips_a_connection_aborted_before_accept
+    logged = capture_console { assert accept_once_after(Errno::ECONNABORTED.new), "accepted the next connection" }
+    refute_match(/server\.accept_failed/, logged)
   end
 
   def test_start_records_the_zone_and_zeroes_the_query_series
