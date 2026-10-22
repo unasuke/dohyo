@@ -77,5 +77,11 @@ class TestTLS < Minitest::Test
   def test_server_context_with_alpn
     context = Dohyo::TLS.server_context(load, alpn: ["http/1.1"])
     assert_equal ["http/1.1"], context.alpn_protocols
+    assert_equal "http/1.1", context.alpn_select_cb.call(["h2", "http/1.1"])
+  end
+
+  def test_server_context_refuses_a_client_without_a_common_alpn_protocol
+    context = Dohyo::TLS.server_context(load, alpn: ["http/1.1"])
+    assert_raises(OpenSSL::SSL::SSLError) { context.alpn_select_cb.call(["h2"]) }
   end
 end

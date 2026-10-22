@@ -120,6 +120,8 @@ module Dohyo
       private
 
       def accept_connection(socket, address, transport:, metrics:)
+        handed_over = false
+
         if socket.respond_to?(:start)
           begin
             socket.start
@@ -134,7 +136,12 @@ module Dohyo
         # OpenSSL does not return the peer address from accept:
         address ||= socket.remote_address
 
+        handed_over = true
         yield socket, address
+      ensure
+        # Once handed over, the block closes the socket. Before that, an unexpected error would otherwise leave the
+        # descriptor open until the socket is garbage collected.
+        socket.close unless handed_over || socket.closed?
       end
     end
 

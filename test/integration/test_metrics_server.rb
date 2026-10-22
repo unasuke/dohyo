@@ -98,6 +98,22 @@ class TestMetricsServer < Minitest::Test
     end
   end
 
+  def test_a_client_offering_only_h2_is_refused_and_disconnected
+    with_metrics_server(https: true, tokens: TOKENS) do
+      disconnected = Thread.new do
+        tcp = Socket.tcp("::1", @port)
+        context = OpenSSL::SSL::SSLContext.new
+        context.alpn_protocols = ["h2"]
+        assert_raises(OpenSSL::SSL::SSLError) { OpenSSL::SSL::SSLSocket.new(tcp, context).connect }
+        # The server must close its side rather than leave the socket for the garbage collector.
+        tcp.wait_readable(3) && tcp.read_nonblock(1, exception: false).nil?
+      ensure
+        tcp&.close
+      end.value
+      assert disconnected, "the server closed the connection"
+    end
+  end
+
   def test_tokens_never_appear_in_logs
     capture = Console::Capture.new
     logger = Console::Logger.new(capture, level: :debug)

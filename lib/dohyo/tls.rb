@@ -54,7 +54,9 @@ module Dohyo
 
       if alpn
         context.alpn_protocols = alpn
-        context.alpn_select_cb = ->(offered) { (alpn & offered).first }
+        # Raising ends the handshake with a no_application_protocol alert (RFC 7301 §3.2). Returning nil instead
+        # makes openssl raise TypeError, which the handshake's rescue does not expect.
+        context.alpn_select_cb = ->(offered) { (alpn & offered).first || raise(OpenSSL::SSL::SSLError, "no application protocol in common") }
       end
 
       context
