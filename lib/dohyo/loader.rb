@@ -143,7 +143,7 @@ module Dohyo
         key = Zone.key(Resolv::DNS::Name.create(owner))
         label = key.split(".").first
 
-        fail!("#{owner} is outside the zone #{@origin}") unless key == @origin || key.end_with?(".#{@origin}")
+        fail!("#{owner} is outside the zone #{@origin}") unless Zone.within?(key, @origin)
         fail!("#{owner}: wildcards are not supported") if label == "*"
         fail!("#{owner}: TTL #{record.ttl} is out of range (0..#{MAX_TTL})") unless (0..MAX_TTL).cover?(record.ttl)
 

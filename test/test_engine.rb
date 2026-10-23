@@ -49,6 +49,14 @@ class TestEngine < Minitest::Test
     assert_error_header(result, Resolv::DNS::RCode::Refused)
   end
 
+  def test_a_label_with_a_dot_ending_like_the_zone_is_refused
+    # The labels "x.blog", "example" and "com": below example.com., not below blog.example.com.
+    labels = [Resolv::DNS::Label::Str.new("x.blog"), *Resolv::DNS::Name.create("example.com.").to_a]
+    result = call(query_bytes(Resolv::DNS::Name.new(labels, true), IN::A))
+    assert_equal "REFUSED", result.rcode
+    assert_error_header(result, Resolv::DNS::RCode::Refused)
+  end
+
   def test_case_16_axfr_is_refused
     result = call(query_bytes("blog.example.com.", Resolv::DNS::Resource.get_class(252, IN::ClassValue)))
     assert_equal "REFUSED", result.rcode

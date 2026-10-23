@@ -58,6 +58,17 @@ class TestZone < Minitest::Test
     refute zone.contains?("xblog.example.com.")
   end
 
+  def test_a_dot_inside_a_label_is_not_a_boundary
+    # The single label "x.blog", then "example" and "com": a child of example.com., outside the zone.
+    refute Dohyo::Zone.within?("x\\.blog.example.com.", ORIGIN)
+    refute Dohyo::Zone.within?("a.x\\.blog.example.com.", ORIGIN)
+    refute fixture_zone.contains?("x\\.blog.example.com.")
+    # A label ending in a backslash ("x\"), then the zone's own labels: inside.
+    assert Dohyo::Zone.within?("x\\\\.blog.example.com.", ORIGIN)
+    assert Dohyo::Zone.within?("www.blog.example.com.", ORIGIN)
+    assert Dohyo::Zone.within?(ORIGIN, ORIGIN)
+  end
+
   def test_is_deeply_frozen
     assert Ractor.shareable?(fixture_zone)
   end

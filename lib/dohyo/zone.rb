@@ -26,6 +26,19 @@ module Dohyo
       message.encode.byteslice(23..) || "".b
     end
 
+    # The end of a key's text before ".origin", when that dot is a label boundary: preceded by an even number of
+    # backslashes (none included). After an odd number, the dot is escaped and belongs to a label.
+    UNESCAPED_END = /(?<!\\)(?:\\\\)*\z/
+
+    # Whether the key `name` is the key `origin` or below it. Comparing the strings alone is not enough: the key of
+    # the single label "x.sub" followed by "example.com." ends in ".sub.example.com." too.
+    def self.within?(name, origin)
+      return true if name == origin
+      return false unless name.end_with?(".#{origin}")
+
+      name.delete_suffix(".#{origin}").match?(UNESCAPED_END)
+    end
+
     SERIAL_HALF = 2**31
 
     # RFC 1982 serial number arithmetic (SERIAL_BITS = 32): whether `serial` is newer than `previous`. Equal
@@ -75,7 +88,7 @@ module Dohyo
 
     # True when the name is the apex or below it.
     def contains?(name)
-      name == @origin || name.end_with?(".#{@origin}")
+      Zone.within?(name, @origin)
     end
 
     # Equal when the origin and every RR (owner, type, TTL, rdata in wire format) match.
