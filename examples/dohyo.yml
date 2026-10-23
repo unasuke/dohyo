@@ -26,7 +26,7 @@ edns:
 
 connection:
   idle_timeout: 10          # seconds; TCP, DoT and DoQ; also the most a DoT TLS handshake may take
-  max_connections: 256      # TCP, DoT and DoQ together
+  max_connections: 256      # TCP, DoT and DoQ together; DoQ connections in the handshake have a separate limit of the same size
 
 doq:
   max_streams_per_connection: 16

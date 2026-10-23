@@ -17,8 +17,8 @@ module Dohyo
   # DNS over QUIC (RFC 9250) on top of protocol-quic.
   #
   # ngtcp2 calls back into Ruby while it processes a packet, and it must not be re-entered from there. The callbacks
-  # therefore only buffer data and queue events; each connection has a fiber that checks the queries, asks the engine
-  # and writes the answers, and another that runs the connection's timers (Protocol::QUIC::Server#run).
+  # therefore only buffer data, queue events and update counts; each connection has a fiber that checks the queries,
+  # asks the engine and writes the answers, and another that runs the connection's timers (Protocol::QUIC::Server#run).
   module DoQ
     # RFC 9250 §4.3
     NO_ERROR = 0x0
@@ -70,7 +70,7 @@ module Dohyo
 
     # One QUIC connection.
     class Connection < Protocol::QUIC::Server
-      attr_accessor :listener, :events, :opened_at, :queries, :close_reason, :counted
+      attr_accessor :listener, :events, :opened_at, :queries, :close_reason, :counted, :handshaking
 
       def create_stream(stream_id) = Stream.new(self, stream_id)
 
@@ -79,6 +79,9 @@ module Dohyo
       end
 
       def handshake_completed
+        # Counted down here rather than when serve admits the connection: the dispatcher may process the next
+        # packet, a new connection's Initial, first. This only changes Ruby state; nothing calls into ngtcp2.
+        listener&.handshake_over(self)
         event(:handshake)
       end
 
@@ -112,6 +115,7 @@ module Dohyo
         @metrics = metrics
         @limiter = limiter
         @connections = Set.new
+        @handshaking = 0
         @stopping = false
 
         family = host.include?(":") ? Socket::AF_INET6 : Socket::AF_INET
@@ -157,13 +161,34 @@ module Dohyo
         @connections << connection
         @metrics.connection_opened(transport: TRANSPORT)
 
+        # The shared limit admits a connection only once its handshake is complete (see #admit). Without a limit of
+        # their own, ClientHellos, from any source address as there is no Retry, would create connections without end.
+        refused = @handshaking >= @limiter.limit
+        unless refused
+          @handshaking += 1
+          connection.handshaking = true
+        end
+
         # Both start at once and wait almost immediately, so they return here before the packet is processed.
         @task.async(transient: true) { serve(connection) }
         @task.async(transient: true) { connection.run }
+
+        # Queued only now, so that serve closes the connection once the dispatcher has processed the packet, as it
+        # handles :handshake. Queued before the tasks start, serve would close it at once, re-entering ngtcp2.
+        connection.event(:refuse) if refused
+      end
+
+      # The connection no longer counts against the handshake limit: its handshake completed, or it went away.
+      def handshake_over(connection)
+        return unless connection.handshaking
+
+        connection.handshaking = false
+        @handshaking -= 1
       end
 
       def connection_gone(connection)
         @connections.delete(connection)
+        handshake_over(connection)
         @limiter.release if connection.counted
         connection.counted = false
 
@@ -198,6 +223,9 @@ module Dohyo
 
           case kind
           when :handshake then admit(connection)
+          # Before the handshake, an application close goes out as a transport APPLICATION_ERROR (RFC 9000
+          # §10.2.3): the client cannot see DOQ_EXCESSIVE_LOAD.
+          when :refuse then close_connection(connection, EXCESSIVE_LOAD, "handshake_limit")
           when :query then answer(connection, argument)
           when :cancelled then argument.abort(REQUEST_CANCELLED)
           when :protocol_error then protocol_error(connection, argument)

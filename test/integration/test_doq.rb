@@ -173,6 +173,75 @@ class TestDoQ < Minitest::Test
     end
   end
 
+  # Stands in for DoQ::Connection where the Listener calls it, so that connections can be held in the handshake.
+  FakeConnection = Struct.new(:listener, :events, :opened_at, :queries, :close_reason, :counted, :handshaking, :closed_with) do
+    def event(*event) = events&.push(event)
+
+    def handshake_completed
+      listener.handshake_over(self)
+      event(:handshake)
+    end
+
+    def run = nil
+
+    def send_packets = nil
+
+    def disconnected? = !closed_with.nil?
+
+    # As DoQ::Connection#disconnected does once the connection is closed.
+    def close(code)
+      self.closed_with = code
+      events.close
+      listener.connection_gone(self)
+    end
+  end
+
+  def with_listener(max_connections:)
+    require "dohyo/doq"
+    tls = Dohyo::TLS.load(certificate_chain: @certificates.certificate_chain, private_key: @certificates.private_key)
+    engine = Dohyo::Engine.new(zone_provider: -> { fixture_zone }, udp_payload_size: 1232)
+    @metrics = Dohyo::Metrics.new
+
+    Sync do |task|
+      listener = Dohyo::DoQ::Listener.new(host: "127.0.0.1", port: 0, engine:, limiter: Dohyo::ConnectionLimiter.new(max_connections),
+        idle_timeout: 10, max_streams: 16, certificate: tls, metrics: @metrics)
+      runner = task.async { listener.run }
+      yield listener
+    ensure
+      runner&.stop
+      listener&.close
+    end
+  end
+
+  def test_connections_beyond_the_handshake_limit_are_closed
+    with_listener(max_connections: 2) do |listener|
+      first, second, third = Array.new(3) { FakeConnection.new }
+      [first, second, third].each { listener.connection_created(it) }
+      assert_equal Dohyo::DoQ::EXCESSIVE_LOAD, eventually(Dohyo::DoQ::EXCESSIVE_LOAD) { third.closed_with }
+      assert_equal "handshake_limit", third.close_reason
+      assert_nil first.closed_with
+      assert_nil second.closed_with
+      assert_equal 1, @metrics.value("dohyo_connections_closed_total", transport: "doq", reason: "handshake_limit")
+
+      # A completed handshake frees a place:
+      first.handshake_completed
+      assert eventually(true) { first.counted }
+      fourth = FakeConnection.new
+      listener.connection_created(fourth)
+
+      # So does a connection that goes away:
+      second.close(Dohyo::DoQ::NO_ERROR)
+      fifth = FakeConnection.new
+      listener.connection_created(fifth)
+
+      sixth = FakeConnection.new
+      listener.connection_created(sixth)
+      assert_equal Dohyo::DoQ::EXCESSIVE_LOAD, eventually(Dohyo::DoQ::EXCESSIVE_LOAD) { sixth.closed_with }
+      assert_nil fourth.closed_with
+      assert_nil fifth.closed_with
+    end
+  end
+
   def test_shutdown_closes_connections_with_no_error
     with_server do |server|
       client = connect
