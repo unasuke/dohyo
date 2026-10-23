@@ -39,8 +39,25 @@ module Dohyo
     MAX_HEADER_FIELDS = 64
     MAX_HEADER_BYTES = 16 * 1024
 
+    # The most the request line and the headers may take to arrive, once the first byte of a request has.
+    REQUEST_TIMEOUT = 10
+
     # An HTTP/1 server connection with limits on what it reads before the request reaches #respond.
     class Connection < Async::HTTP::Protocol::HTTP1::Server
+      def initialize(stream, version, request_timeout:, **options)
+        super(stream, version, **options)
+        @request_timeout = request_timeout
+      end
+
+      # Waiting for the next request on a kept-alive connection is bounded only by IDLE_TIMEOUT, which applies to
+      # each read. Once a request has begun, its line and headers must arrive within the request timeout in all,
+      # however slowly they trickle in. On EOF, the original returns nil as before.
+      def read_request(&block)
+        return super if @stream.peek(1).empty?
+
+        Async::Task.current.with_timeout(@request_timeout) { super(&block) }
+      end
+
       # The same as protocol-http1 0.41.0, which reads header lines without any limit, except for the two limits.
       # Protocol::HTTP1::BadHeader makes async-http answer 400 and close the connection.
       def read_headers
@@ -64,8 +81,8 @@ module Dohyo
 
     # Passed to Async::HTTP::Server as its protocol: wraps each accepted connection in a Connection. Not named
     # Protocol, which would hide the ::Protocol of protocol-http inside this class.
-    HTTPProtocol = Data.define do
-      def server(peer) = Connection.new(::IO::Stream(peer), Async::HTTP::Protocol::HTTP1::VERSION)
+    HTTPProtocol = Data.define(:request_timeout) do
+      def server(peer) = Connection.new(::IO::Stream(peer), Async::HTTP::Protocol::HTTP1::VERSION, request_timeout:)
     end
 
     # @parameter listen [Array<Config::MetricsListen>]
@@ -73,7 +90,8 @@ module Dohyo
     # @parameter tokens [BearerTokens, nil] Required when given.
     # @parameter max_connections [Integer] For tests, like the timeouts below; the configuration cannot change it.
     # @parameter handshake_timeout [Numeric]
-    def initialize(listen:, metrics:, tls: nil, tokens: nil, max_connections: MAX_CONNECTIONS, handshake_timeout: HANDSHAKE_TIMEOUT)
+    # @parameter request_timeout [Numeric]
+    def initialize(listen:, metrics:, tls: nil, tokens: nil, max_connections: MAX_CONNECTIONS, handshake_timeout: HANDSHAKE_TIMEOUT, request_timeout: REQUEST_TIMEOUT)
       @listen = listen
       @metrics = metrics
       @limiter = ConnectionLimiter.new(max_connections)
@@ -81,7 +99,7 @@ module Dohyo
       @tls_context = TLS.server_context(tls, alpn: ["http/1.1"]) if tls
       @tokens = tokens
       @wrapper = Server::Wrapper.new
-      @http = Async::HTTP::Server.new(method(:respond), nil, protocol: HTTPProtocol.new, scheme: tls ? "https" : "http")
+      @http = Async::HTTP::Server.new(method(:respond), nil, protocol: HTTPProtocol.new(request_timeout:), scheme: tls ? "https" : "http")
       @bound = []
     end
 

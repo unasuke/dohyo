@@ -131,6 +131,60 @@ class TestMetricsServer < Minitest::Test
     end
   end
 
+  def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+  def test_a_trickling_request_is_cut_without_a_response
+    with_metrics_server(request_timeout: 1) do
+      socket = Socket.tcp("127.0.0.1", @port)
+      started = monotonic
+      socket.write("GET /metrics HTTP/1.1\r\n")
+      closed_after = nil
+
+      1.step do |field|
+        break if monotonic - started > 4
+
+        if socket.wait_readable(0.3)
+          assert_nil socket.read_nonblock(1024, exception: false), "closed without a response"
+          closed_after = monotonic - started
+          break
+        end
+        socket.write("x-#{field}: 1\r\n")
+      end
+
+      assert closed_after, "the server closed the connection"
+      assert_operator closed_after, :<, 2.5
+    ensure
+      socket&.close
+    end
+  end
+
+  # Reads one response off a kept-alive connection and returns its status line.
+  def read_response(socket)
+    status = socket.gets.chomp
+    length = 0
+    while (line = socket.gets.chomp) != ""
+      name, value = line.split(":", 2)
+      length = value.to_i if name.casecmp?("content-length")
+    end
+    socket.read(length)
+    status
+  end
+
+  def test_a_kept_alive_connection_may_idle_longer_than_the_request_timeout
+    with_metrics_server(request_timeout: 1) do
+      socket = Socket.tcp("127.0.0.1", @port)
+      request = "GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n"
+
+      socket.write(request)
+      assert_equal "HTTP/1.1 200 OK", read_response(socket)
+      sleep 1.5
+      socket.write(request)
+      assert_equal "HTTP/1.1 200 OK", read_response(socket), "the same connection still serves"
+    ensure
+      socket&.close
+    end
+  end
+
   def closed_by_server?(socket, seconds: 2)
     socket.wait_readable(seconds) && socket.read_nonblock(1, exception: false).nil?
   end
