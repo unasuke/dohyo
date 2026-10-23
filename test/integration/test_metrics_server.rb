@@ -114,6 +114,23 @@ class TestMetricsServer < Minitest::Test
     end
   end
 
+  # Sends GET /metrics over plain HTTP with Host and `headers`, and returns the status line.
+  def raw_status(headers)
+    socket = Socket.tcp("127.0.0.1", @port)
+    socket.write("GET /metrics HTTP/1.1\r\nHost: localhost\r\n#{headers.map { "#{it}\r\n" }.join}\r\n")
+    socket.gets&.chomp
+  ensure
+    socket&.close
+  end
+
+  def test_too_many_or_too_large_header_fields_are_refused
+    with_metrics_server do
+      assert_equal "HTTP/1.1 200 OK", raw_status(Array.new(63) { "x-#{it}: 1" }), "64 fields with Host"
+      assert_equal "HTTP/1.1 400 Bad Request", raw_status(Array.new(64) { "x-#{it}: 1" }), "65 fields with Host"
+      assert_equal "HTTP/1.1 400 Bad Request", raw_status(Array.new(3) { "x-#{it}: #{"a" * 6000}" }), "over 16 KiB in short lines"
+    end
+  end
+
   def closed_by_server?(socket, seconds: 2)
     socket.wait_readable(seconds) && socket.read_nonblock(1, exception: false).nil?
   end

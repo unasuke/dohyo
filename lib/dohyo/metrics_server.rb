@@ -4,6 +4,9 @@ require "async"
 require "async/http/server"
 require "async/http/protocol/http1"
 require "protocol/http/response"
+require "protocol/http/headers"
+require "protocol/http1/error"
+require "io/stream"
 require "io/endpoint/host_endpoint"
 require "io/endpoint/ssl_endpoint"
 require "console"
@@ -31,6 +34,40 @@ module Dohyo
     # unauthenticated clients cannot use up the descriptors the DNS listeners share.
     MAX_CONNECTIONS = 16
 
+    # Header fields in a request, and their total size (without the line endings). Every request is read in full
+    # before its token is checked, so these bound what an unauthenticated client can make the server hold.
+    MAX_HEADER_FIELDS = 64
+    MAX_HEADER_BYTES = 16 * 1024
+
+    # An HTTP/1 server connection with limits on what it reads before the request reaches #respond.
+    class Connection < Async::HTTP::Protocol::HTTP1::Server
+      # The same as protocol-http1 0.41.0, which reads header lines without any limit, except for the two limits.
+      # Protocol::HTTP1::BadHeader makes async-http answer 400 and close the connection.
+      def read_headers
+        fields = []
+        size = 0
+
+        while (line = read_line)
+          break if line.empty?
+
+          size += line.bytesize
+          raise ::Protocol::HTTP1::BadHeader, "more than #{MAX_HEADER_FIELDS} header fields" if fields.size >= MAX_HEADER_FIELDS
+          raise ::Protocol::HTTP1::BadHeader, "header fields over #{MAX_HEADER_BYTES} bytes" if size > MAX_HEADER_BYTES
+
+          match = ::Protocol::HTTP1::HEADER.match(line) or raise ::Protocol::HTTP1::BadHeader, "Could not parse header: #{line.inspect}"
+          fields << [match[1], match[2] || ""]
+        end
+
+        ::Protocol::HTTP::Headers.new(fields)
+      end
+    end
+
+    # Passed to Async::HTTP::Server as its protocol: wraps each accepted connection in a Connection. Not named
+    # Protocol, which would hide the ::Protocol of protocol-http inside this class.
+    HTTPProtocol = Data.define do
+      def server(peer) = Connection.new(::IO::Stream(peer), Async::HTTP::Protocol::HTTP1::VERSION)
+    end
+
     # @parameter listen [Array<Config::MetricsListen>]
     # @parameter tls [TLS::Certificate, nil] HTTPS when given.
     # @parameter tokens [BearerTokens, nil] Required when given.
@@ -44,7 +81,7 @@ module Dohyo
       @tls_context = TLS.server_context(tls, alpn: ["http/1.1"]) if tls
       @tokens = tokens
       @wrapper = Server::Wrapper.new
-      @http = Async::HTTP::Server.new(method(:respond), nil, protocol: Async::HTTP::Protocol::HTTP1, scheme: tls ? "https" : "http")
+      @http = Async::HTTP::Server.new(method(:respond), nil, protocol: HTTPProtocol.new, scheme: tls ? "https" : "http")
       @bound = []
     end
 
