@@ -24,6 +24,7 @@ Queries for other types at an existing name get an empty answer (NODATA); querie
 
 - `$ORIGIN` is required and must be the configured `zone.origin`. Without it, relative names would be resolved against the root. Names written before the first `$ORIGIN` end up outside the zone and are rejected.
 - `$TTL` takes a number of seconds only (`$TTL 3600`, not `$TTL 1h`). The parser dohyo uses reads `$TTL 1h` as 1 second, so units are refused there. Units in a record's own TTL field (`www 1h IN A …`) work.
+- Any other directive, such as `$INCLUDE` or `$GENERATE`, is refused. The parser dohyo uses would skip `$INCLUDE` without reading the file, and its records would be missing without a word.
 
 ## TTLs
 

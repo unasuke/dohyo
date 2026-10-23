@@ -40,6 +40,16 @@ class TestLoader < Minitest::Test
     assert_match(/cannot read/, error.message)
   end
 
+  def test_other_directives_are_refused
+    assert_zone_error(/line 3: \$INCLUDE is not supported \(only \$ORIGIN and \$TTL are\)/, "", header: HEADER.sub("$TTL 3600\n", "$TTL 3600\n$INCLUDE other.zone\n"))
+    assert_zone_error(/line 5: \$GENERATE is not supported/, "$GENERATE 1-2 host$ A 192.0.2.$\n")
+  end
+
+  def test_directives_are_case_insensitive
+    zone = parse("", header: HEADER.sub("$ORIGIN", "$origin").sub("$TTL", "$ttl"))
+    assert_equal ORIGIN, zone.origin
+  end
+
   def test_parse_error
     assert_zone_error(/cannot parse/, "@ IN A\n")
   end

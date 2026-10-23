@@ -77,6 +77,7 @@ module Dohyo
       end
 
       def build
+        check_directives
         check_ttl_directives
         check_origin_directives
         zonefile = parse_zonefile
@@ -91,6 +92,17 @@ module Dohyo
 
       def fail!(message)
         raise ZoneError.new(message, path: @path)
+      end
+
+      # dns-zonefile 1.3.0 reads any other directive, $INCLUDE among them, as a variable and goes on without reading
+      # a file: the records it was meant to bring in would be missing without a word.
+      def check_directives
+        @text.each_line.with_index(1) do |line, number|
+          next unless (match = line.match(/\A\s*\$([^\s;]+)/))
+
+          name = match[1]
+          fail!("line #{number}: $#{name} is not supported (only $ORIGIN and $TTL are)") unless %w[ORIGIN TTL].include?(name.upcase(:ascii))
+        end
       end
 
       # dns-zonefile 1.3.0 reads "$TTL 1h" as 1 second (a record's own TTL field understands units). Accept only
