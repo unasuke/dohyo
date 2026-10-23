@@ -226,7 +226,8 @@ module Dohyo
           # Before the handshake, an application close goes out as a transport APPLICATION_ERROR (RFC 9000
           # §10.2.3): the client cannot see DOQ_EXCESSIVE_LOAD.
           when :refuse then close_connection(connection, EXCESSIVE_LOAD, "handshake_limit")
-          when :query then answer(connection, argument)
+          # The queue still holds what arrived before the connection was closed, for example beyond a limit.
+          when :query then answer(connection, argument) unless connection.disconnected?
           when :cancelled then argument.abort(REQUEST_CANCELLED)
           when :protocol_error then protocol_error(connection, argument)
           end

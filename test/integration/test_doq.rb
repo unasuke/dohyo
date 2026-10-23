@@ -196,6 +196,12 @@ class TestDoQ < Minitest::Test
     end
   end
 
+  FakeStream = Struct.new(:buffer, :written) do
+    def write(data) = (self.written = data)
+
+    def finish = nil
+  end
+
   def with_listener(max_connections:)
     require "dohyo/doq"
     tls = Dohyo::TLS.load(certificate_chain: @certificates.certificate_chain, private_key: @certificates.private_key)
@@ -239,6 +245,23 @@ class TestDoQ < Minitest::Test
       assert_equal Dohyo::DoQ::EXCESSIVE_LOAD, eventually(Dohyo::DoQ::EXCESSIVE_LOAD) { sixth.closed_with }
       assert_nil fourth.closed_with
       assert_nil fifth.closed_with
+    end
+  end
+
+  def test_queries_left_on_a_closed_connection_are_not_answered
+    with_listener(max_connections: 1) do |listener|
+      listener.connection_created(FakeConnection.new)
+      refused = FakeConnection.new
+      listener.connection_created(refused)
+      # Queued before serve gets to the refusal:
+      query = query_bytes("blog.example.com.", IN::A, id: 0)
+      stream = FakeStream.new([query.bytesize].pack("n") + query)
+      refused.event(:query, stream)
+
+      assert_equal Dohyo::DoQ::EXCESSIVE_LOAD, eventually(Dohyo::DoQ::EXCESSIVE_LOAD) { refused.closed_with }
+      sleep 0.05
+      assert_nil stream.written, "no answer"
+      assert_nil @metrics.value("dohyo_queries_total", transport: "doq", qtype: "A", rcode: "NOERROR")
     end
   end
 
