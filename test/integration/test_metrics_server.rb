@@ -24,12 +24,12 @@ class TestMetricsServer < Minitest::Test
 
   def listen(*addresses) = addresses.map { Dohyo::Config::MetricsListen.new(host: it, port: 0) }
 
-  def with_metrics_server(https: false, tokens: nil)
+  def with_metrics_server(https: false, tokens: nil, **options)
     tls = Dohyo::TLS.load(certificate_chain: @certificates.certificate_chain, private_key: @certificates.private_key) if https
     host = https ? "::" : "127.0.0.1"
 
     Sync do |task|
-      server = Dohyo::MetricsServer.new(listen: listen(host), metrics: @metrics, tls:, tokens: tokens && Dohyo::BearerTokens.new(tokens))
+      server = Dohyo::MetricsServer.new(listen: listen(host), metrics: @metrics, tls:, tokens: tokens && Dohyo::BearerTokens.new(tokens), **options)
       server.start(task)
       @port = server.bound_addresses.first.ip_port
       @https = https
@@ -111,6 +111,14 @@ class TestMetricsServer < Minitest::Test
         tcp&.close
       end.value
       assert disconnected, "the server closed the connection"
+    end
+  end
+
+  def test_a_trickling_handshake_is_cut_at_the_handshake_timeout
+    with_metrics_server(https: true, tokens: TOKENS, handshake_timeout: 1) do
+      elapsed = trickle_client_hello("::1", @port)
+      assert elapsed, "the server closed the connection"
+      assert_operator elapsed, :<, 2.5
     end
   end
 

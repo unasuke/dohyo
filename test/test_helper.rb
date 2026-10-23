@@ -57,6 +57,27 @@ module DohyoTestHelper
     $VERBOSE = verbose
   end
 
+  # Opens a TLS handshake and sends the ClientHello a byte every `interval` seconds, for at most `seconds`.
+  # @returns [Float, nil] Seconds until the server closed the connection, or nil when it kept waiting.
+  def trickle_client_hello(host, port, interval: 0.3, seconds: 4)
+    socket = Socket.tcp(host, port)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    # A handshake record announcing 512 bytes: the server reads on until all of them have arrived.
+    socket.write("\x16\x03\x01\x02\x00".b)
+
+    loop do
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      return nil if elapsed > seconds
+      return elapsed if socket.wait_readable(interval)
+
+      socket.write("\x01".b)
+    end
+  rescue Errno::EPIPE, Errno::ECONNRESET
+    Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+  ensure
+    socket&.close
+  end
+
   def assert_negative_soa(response)
     assert_equal 1, response.authority.size
     name, ttl, soa = response.authority.first

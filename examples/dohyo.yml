@@ -25,7 +25,7 @@ edns:
   udp_payload_size: 1232    # 512..4096
 
 connection:
-  idle_timeout: 10          # seconds; TCP, DoT and DoQ
+  idle_timeout: 10          # seconds; TCP, DoT and DoQ; also the most a DoT TLS handshake may take
   max_connections: 256      # TCP, DoT and DoQ together
 
 doq:

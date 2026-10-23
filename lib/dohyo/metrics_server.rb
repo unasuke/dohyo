@@ -23,12 +23,17 @@ module Dohyo
     # Scrapers keep connections open between scrapes; drop them after this long without a request.
     IDLE_TIMEOUT = 60
 
+    # The most a TLS handshake may take in all. IDLE_TIMEOUT applies to each read and cannot cut a slow ClientHello.
+    HANDSHAKE_TIMEOUT = 10
+
     # @parameter listen [Array<Config::MetricsListen>]
     # @parameter tls [TLS::Certificate, nil] HTTPS when given.
     # @parameter tokens [BearerTokens, nil] Required when given.
-    def initialize(listen:, metrics:, tls: nil, tokens: nil)
+    # @parameter handshake_timeout [Numeric] For tests; the configuration cannot change it.
+    def initialize(listen:, metrics:, tls: nil, tokens: nil, handshake_timeout: HANDSHAKE_TIMEOUT)
       @listen = listen
       @metrics = metrics
+      @handshake_timeout = handshake_timeout
       @tls_context = TLS.server_context(tls, alpn: ["http/1.1"]) if tls
       @tokens = tokens
       @wrapper = Server::Wrapper.new
@@ -48,7 +53,7 @@ module Dohyo
 
         endpoint.bind.each do |socket|
           task = parent.async(transient: true) do
-            @wrapper.accept(socket, timeout: IDLE_TIMEOUT, transport: "metrics") { |peer, address| @http.accept(peer, address) }
+            @wrapper.accept(socket, timeout: IDLE_TIMEOUT, handshake_timeout: @handshake_timeout, transport: "metrics") { |peer, address| @http.accept(peer, address) }
           end
           @bound << [socket, task]
           Console.info(self, "server.listening", transport: "metrics", address: socket.local_address.inspect_sockaddr, tls: !@tls_context.nil?)

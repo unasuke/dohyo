@@ -269,6 +269,15 @@ class TestServerIntegration < Minitest::Test
     end
   end
 
+  def test_a_trickling_dot_handshake_is_cut_at_the_idle_timeout
+    with_server(idle_timeout: 1) do |server|
+      dot = address_of(server, "dot")
+      elapsed = trickle_client_hello(dot.ip_address, dot.ip_port)
+      assert elapsed, "the server closed the connection"
+      assert_operator elapsed, :<, 2.5
+    end
+  end
+
   def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
   def test_shutdown_closes_waiting_connections_at_once_and_stops_listening

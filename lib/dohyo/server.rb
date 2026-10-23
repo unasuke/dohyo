@@ -79,7 +79,9 @@ module Dohyo
       # - Connections are counted in `metrics` from accept on, so that refused ones and failed handshakes count too.
       # - Running out of file descriptors or memory pauses accepting rather than ending the loop, which would stop
       #   the listener until a restart while the process kept running.
-      def accept(server, timeout: nil, limiter: nil, transport: nil, metrics: nil, **, &block)
+      # - `handshake_timeout` bounds the whole TLS handshake. `timeout` applies to each read, so a client sending the
+      #   ClientHello a byte at a time would otherwise never time out.
+      def accept(server, timeout: nil, limiter: nil, transport: nil, metrics: nil, handshake_timeout: nil, **, &block)
         loop do
           socket, address = begin
             socket_accept(server)
@@ -110,7 +112,7 @@ module Dohyo
           set_timeout(socket, timeout) if timeout
 
           schedule do
-            accept_connection(socket, address, transport:, metrics:, &block)
+            accept_connection(socket, address, transport:, metrics:, handshake_timeout:, &block)
           ensure
             limiter&.release
           end
@@ -119,13 +121,17 @@ module Dohyo
 
       private
 
-      def accept_connection(socket, address, transport:, metrics:)
+      def accept_connection(socket, address, transport:, metrics:, handshake_timeout:)
         handed_over = false
 
         if socket.respond_to?(:start)
           begin
-            socket.start
-          rescue OpenSSL::SSL::SSLError, IOError, SystemCallError => error
+            if handshake_timeout
+              Async::Task.current.with_timeout(handshake_timeout) { socket.start }
+            else
+              socket.start
+            end
+          rescue OpenSSL::SSL::SSLError, IOError, SystemCallError, Async::TimeoutError => error
             Console.debug(self, "connection.handshake_failed", error:)
             socket.close
             metrics&.connection_closed(transport:, reason: "error")
@@ -151,7 +157,8 @@ module Dohyo
     # @parameter udp_payload_size [Integer] The EDNS(0) UDP payload size to advertise and the UDP response limit.
     # @parameter tls [TLS::Certificate, nil] The certificate for tls:// listeners.
     # @parameter max_connections [Integer] The limit shared by every stream listener.
-    # @parameter idle_timeout [Numeric] Seconds a stream connection may stay silent (including the TLS handshake).
+    # @parameter idle_timeout [Numeric] Seconds a stream connection may stay silent, and the most a DoT TLS handshake
+    #   may take in all.
     # @parameter doq_max_streams [Integer] Concurrent streams a DoQ client may open per connection.
     # @parameter metrics [Metrics] Where the handlers count queries and connections.
     def initialize(zone:, listen:, udp_payload_size:, max_connections:, idle_timeout:, tls: nil, zone_source: nil, doq_max_streams: 16, metrics: Metrics.new)
@@ -323,7 +330,7 @@ module Dohyo
     def run_handler(transport, socket)
       case transport
       when "udp" then DatagramHandler.new(self, socket, engine: @engine, transport:).run(@wrapper)
-      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper, limiter: @limiter, transport:, timeout: @idle_timeout, metrics: @metrics)
+      when "tcp", "dot" then StreamHandler.new(self, socket, engine: @engine, transport:).run(@wrapper, limiter: @limiter, transport:, timeout: @idle_timeout, handshake_timeout: @idle_timeout, metrics: @metrics)
       end
     end
   end
