@@ -1,4 +1,4 @@
-# systemd unit for dohyo, deployed as a git checkout in /opt/dohyo with Ruby in /usr/local/rbenv/versions/4.0.7.
+# systemd unit for dohyo, deployed as a git checkout in /opt/dohyo with Ruby in /usr/local/rbenv/versions/4.0.9.
 [Unit]
 Description=dohyo authoritative DNS server
 After=network-online.target
@@ -9,8 +9,8 @@ Type=simple
 User=dohyo
 Group=dohyo
 WorkingDirectory=/opt/dohyo
-ExecStartPre=/usr/local/rbenv/versions/4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check
-ExecStart=/usr/local/rbenv/versions/4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml
+ExecStartPre=/usr/local/rbenv/versions/4.0.9/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check
+ExecStart=/usr/local/rbenv/versions/4.0.9/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml
 ExecReload=/bin/kill -HUP $MAINPID
 # Ports 53 and 853 without running as root:
 AmbientCapabilities=CAP_NET_BIND_SERVICE

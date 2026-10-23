@@ -17,15 +17,15 @@ The first line and `libssl-dev`, `libyaml-dev`, `zlib1g-dev` and `libffi-dev` bu
 
 On a small instance, add swap for the build; the processes are small when built one at a time, but Ruby and protocol-quic compile in parallel when there are several CPUs.
 
-Install Ruby 4.0.7 under `/usr/local/rbenv` with [rbenv](https://github.com/rbenv/rbenv) and [ruby-build](https://github.com/rbenv/ruby-build):
+Install Ruby 4.0.9 under `/usr/local/rbenv` with [rbenv](https://github.com/rbenv/rbenv) and [ruby-build](https://github.com/rbenv/ruby-build):
 
 ```sh
 sudo git clone https://github.com/rbenv/rbenv /usr/local/rbenv
 sudo git clone https://github.com/rbenv/ruby-build /usr/local/rbenv/plugins/ruby-build
-sudo RBENV_ROOT=/usr/local/rbenv TMPDIR=/var/tmp /usr/local/rbenv/bin/rbenv install 4.0.7
+sudo RBENV_ROOT=/usr/local/rbenv TMPDIR=/var/tmp /usr/local/rbenv/bin/rbenv install 4.0.9
 ```
 
-rbenv uses `~/.rbenv` unless `RBENV_ROOT` says otherwise. The commands below call Ruby by its path, such as `/usr/local/rbenv/versions/4.0.7/bin/bundle`, so no shell needs rbenv set up.
+rbenv uses `~/.rbenv` unless `RBENV_ROOT` says otherwise. The commands below call Ruby by its path, such as `/usr/local/rbenv/versions/4.0.9/bin/bundle`, so no shell needs rbenv set up.
 
 Debian 13 mounts `/tmp` as tmpfs, sized at half the memory, which is too small to build Ruby on a small instance; `TMPDIR=/var/tmp` builds on disk instead.
 
@@ -40,9 +40,9 @@ sudo useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin
 sudo install -d -o deploy -g deploy -m 0755 /opt/dohyo
 git clone https://github.com/unasuke/dohyo /opt/dohyo
 cd /opt/dohyo
-/usr/local/rbenv/versions/4.0.7/bin/bundle config set --local deployment true
-/usr/local/rbenv/versions/4.0.7/bin/bundle config set --local without development
-/usr/local/rbenv/versions/4.0.7/bin/bundle install
+/usr/local/rbenv/versions/4.0.9/bin/bundle config set --local deployment true
+/usr/local/rbenv/versions/4.0.9/bin/bundle config set --local without development
+/usr/local/rbenv/versions/4.0.9/bin/bundle install
 ```
 
 Run `git` and `bundle` in `/opt/dohyo` as `deploy`, without sudo: git refuses to work in a repository owned by another user.
@@ -56,7 +56,7 @@ Put the configuration in `/etc/dohyo/dohyo.yml`, starting from [`examples/dohyo.
 Check everything without starting the server:
 
 ```sh
-sudo -u dohyo /usr/local/rbenv/versions/4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check
+sudo -u dohyo /usr/local/rbenv/versions/4.0.9/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check
 ```
 
 It runs as `dohyo`, since only `dohyo` can read the private key and the metrics token file. It loads the configuration, the zone, the certificate and the metrics token file, then prints the zone's origin and serial and the number of tokens (never the tokens). The exit status is 0 on success, 1 when something is invalid, and 2 for bad arguments.
@@ -88,7 +88,7 @@ Under systemd each event is one line of JSON; on a terminal it is text. Set `CON
 ## Changing the zone
 
 1. Edit the zone file and raise the SOA serial.
-2. Check it in `/opt/dohyo`: `sudo -u dohyo /usr/local/rbenv/versions/4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check`.
+2. Check it in `/opt/dohyo`: `sudo -u dohyo /usr/local/rbenv/versions/4.0.9/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check`.
 3. `sudo systemctl reload dohyo`.
 
 A reload that fails keeps the previous zone. Tell success from failure in the log (`zone.reloaded` or `zone.load_failed` with the reason) or in the metrics (`dohyo_zone_serial`, `dohyo_zone_reloads_total{result="failure"}`). The same serial with different content is refused on purpose: it catches a forgotten serial bump.
@@ -98,8 +98,8 @@ A reload that fails keeps the previous zone. Tell success from failure in the lo
 ```sh
 cd /opt/dohyo
 git pull
-/usr/local/rbenv/versions/4.0.7/bin/bundle install
-sudo -u dohyo /usr/local/rbenv/versions/4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check && sudo systemctl restart dohyo
+/usr/local/rbenv/versions/4.0.9/bin/bundle install
+sudo -u dohyo /usr/local/rbenv/versions/4.0.9/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check && sudo systemctl restart dohyo
 ```
 
 Do not restart when `--check` fails.
