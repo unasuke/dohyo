@@ -146,6 +146,8 @@ scrape_configs:
       - targets: ['ns.example.com:9153']
 ```
 
+Before the token is checked, `/metrics` limits what a client can hold: 16 connections across every listen address, 10 seconds for the TLS handshake, and 10 seconds for the request line and headers, which may have up to 64 fields and 16 KiB. A request without a valid token gets 401 and its connection is closed. The limits are fixed; one Prometheus server needs one or two connections.
+
 To replace the token without a failed scrape:
 
 1. Add the new token as a second line of the token file and `systemctl reload dohyo`. Both tokens are valid now.
