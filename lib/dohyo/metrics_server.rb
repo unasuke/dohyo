@@ -58,6 +58,13 @@ module Dohyo
         Async::Task.current.with_timeout(@request_timeout) { super(&block) }
       end
 
+      # A client without a valid token gets nothing more from this connection. Keeping it alive would also mean
+      # reading the rest of a request body it may never finish sending.
+      def write_response(version, status, headers, reason = nil)
+        self.persistent = false if status == 401
+        super
+      end
+
       # The same as protocol-http1 0.41.0, which reads header lines without any limit, except for the two limits.
       # Protocol::HTTP1::BadHeader makes async-http answer 400 and close the connection.
       def read_headers

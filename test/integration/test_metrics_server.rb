@@ -185,6 +185,28 @@ class TestMetricsServer < Minitest::Test
     end
   end
 
+  def test_a_401_closes_the_connection_without_reading_the_body
+    with_metrics_server(https: true, tokens: TOKENS) do
+      tcp = Socket.tcp("::1", @port)
+      tls = OpenSSL::SSL::SSLSocket.new(tcp)
+      tls.sync_close = true
+      tls.connect
+      # Most of the declared body never comes.
+      tls.write("POST /metrics HTTP/1.1\r\nHost: localhost\r\nContent-Length: 300000\r\n\r\n#{"a" * 1000}")
+
+      assert_equal "HTTP/1.1 401 Unauthorized", tls.gets.chomp
+      headers = []
+      while (line = tls.gets.chomp) != ""
+        headers << line.downcase
+      end
+      assert_includes headers, "connection: close"
+      tls.read(headers.find { it.start_with?("content-length:") }.split(":").last.to_i)
+      assert tcp.wait_readable(2), "closed rather than waiting for the rest of the body"
+    ensure
+      tls&.close
+    end
+  end
+
   def closed_by_server?(socket, seconds: 2)
     socket.wait_readable(seconds) && socket.read_nonblock(1, exception: false).nil?
   end
