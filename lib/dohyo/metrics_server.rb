@@ -122,7 +122,7 @@ module Dohyo
 
         endpoint.bind.each do |socket|
           task = parent.async(transient: true) do
-            @wrapper.accept(socket, timeout: IDLE_TIMEOUT, handshake_timeout: @handshake_timeout, limiter: @limiter, transport: "metrics") { |peer, address| @http.accept(peer, address) }
+            @wrapper.accept(socket, timeout: IDLE_TIMEOUT, handshake_timeout: @handshake_timeout, limiter: @limiter, transport: "metrics") { |peer, address| serve(peer, address) }
           end
           @bound << [socket, task]
           Console.info(self, "server.listening", transport: "metrics", address: socket.local_address.inspect_sockaddr, tls: !@tls_context.nil?)
@@ -141,6 +141,14 @@ module Dohyo
     end
 
     private
+
+    # Clients cause these while their requests are read: a line too long, a read or request timeout (IOError covers
+    # IO::TimeoutError), a dropped connection. Async would otherwise report each as a warning with a backtrace.
+    def serve(peer, address)
+      @http.accept(peer, address)
+    rescue ::Protocol::HTTP1::Error, Async::TimeoutError, IOError, SystemCallError, OpenSSL::SSL::SSLError => error
+      Console.debug(self, "connection.error", transport: "metrics", error:)
+    end
 
     # Authentication comes first: without a valid token, every request gets 401 and learns nothing else.
     def respond(request)

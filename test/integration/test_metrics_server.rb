@@ -207,6 +207,32 @@ class TestMetricsServer < Minitest::Test
     end
   end
 
+  def capture_console
+    capture = Console::Capture.new
+    previous = Console.logger
+    Console.logger = Console::Logger.new(capture, level: :debug)
+    yield
+    capture.map(&:inspect).join("\n")
+  ensure
+    Console.logger = previous
+  end
+
+  def test_a_line_too_long_is_logged_as_a_connection_error
+    logged = capture_console do
+      with_metrics_server do
+        socket = Socket.tcp("127.0.0.1", @port)
+        socket.write("GET /metrics HTTP/1.1\r\nx-long: #{"a" * 9000}\r\n\r\n")
+        assert closed_by_server?(socket), "the server closed the connection"
+      ensure
+        socket&.close
+      end
+    end
+
+    assert_match(/connection\.error/, logged)
+    assert_match(/LineLengthError/, logged)
+    refute_match(/unhandled exception/, logged)
+  end
+
   def closed_by_server?(socket, seconds: 2)
     socket.wait_readable(seconds) && socket.read_nonblock(1, exception: false).nil?
   end
