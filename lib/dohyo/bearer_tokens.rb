@@ -10,7 +10,12 @@ module Dohyo
   #
   # Tokens never appear in logs, metrics or error messages.
   class BearerTokens
-    # @raises [ConfigError] If the file cannot be read, is readable by group or others, or has no token.
+    # Nothing limits how often a client may try a token, so a short one could be guessed. `openssl rand -hex 32`
+    # gives 64.
+    MIN_TOKEN_BYTES = 32
+
+    # @raises [ConfigError] If the file cannot be read, is readable by group or others, has no token, or has a token
+    #   shorter than MIN_TOKEN_BYTES.
     def self.load(path)
       mode = File.stat(path).mode
       raise ConfigError, "#{path} must not be readable by group or others (it is #{format("%04o", mode & 0o7777)}; use 0600 or 0400)" unless (mode & 0o077).zero?
@@ -18,6 +23,7 @@ module Dohyo
       # Tokens are compared as bytes, so read them as bytes, whatever the locale.
       tokens = File.readlines(path, chomp: true, encoding: Encoding::BINARY).map(&:strip).reject(&:empty?)
       raise ConfigError, "#{path} has no token" if tokens.empty?
+      raise ConfigError, "#{path} has a token shorter than #{MIN_TOKEN_BYTES} bytes (use openssl rand -hex 32)" if tokens.any? { it.bytesize < MIN_TOKEN_BYTES }
 
       new(tokens)
     rescue SystemCallError => error

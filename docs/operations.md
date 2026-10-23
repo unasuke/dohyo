@@ -133,7 +133,7 @@ sudo chown dohyo:dohyo /etc/dohyo/secrets/metrics-tokens
 sudo chmod 0600 /etc/dohyo/secrets/metrics-tokens
 ```
 
-dohyo refuses to start if the file is readable by group or others, or holds no token.
+dohyo refuses to start if the file is readable by group or others, holds no token, or holds a token shorter than 32 bytes.
 
 Prometheus:
 
@@ -156,7 +156,7 @@ To replace the token without a failed scrape:
 2. Put the new token in Prometheus's credentials file.
 3. Remove the old line and `systemctl reload dohyo` again.
 
-A token file that cannot be read on reload, or is empty, keeps the previous tokens (logged as `metrics.tokens_reload_failed`).
+A token file that cannot be read on reload, is empty or holds a token shorter than 32 bytes keeps the previous tokens (logged as `metrics.tokens_reload_failed`).
 
 Queries worth watching:
 

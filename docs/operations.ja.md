@@ -133,7 +133,7 @@ sudo chown dohyo:dohyo /etc/dohyo/secrets/metrics-tokens
 sudo chmod 0600 /etc/dohyo/secrets/metrics-tokens
 ```
 
-このファイルがグループや他人から読める、またはトークンが 1 つも無いと、dohyo は起動しません。
+このファイルがグループや他人から読める、トークンが 1 つも無い、または 32 バイト未満のトークンがあると、dohyo は起動しません。
 
 Prometheus の設定は次のとおりです。
 
@@ -156,7 +156,7 @@ scrape を失敗させずにトークンを入れ替える手順です。
 2. Prometheus の credentials のファイルを新しいトークンに書き換えます。
 3. 古いトークンの行を消し、もう一度 `systemctl reload dohyo` します。
 
-再読み込みのときにトークンファイルが読めない、または空なら、それまでのトークンを使い続けます（ログは `metrics.tokens_reload_failed`）。
+再読み込みのときにトークンファイルが読めない、空、または 32 バイト未満のトークンがあるなら、それまでのトークンを使い続けます（ログは `metrics.tokens_reload_failed`）。
 
 見ておくとよいクエリの例です。
 
