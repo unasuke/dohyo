@@ -114,6 +114,33 @@ class TestMetricsServer < Minitest::Test
     end
   end
 
+  def closed_by_server?(socket, seconds: 2)
+    socket.wait_readable(seconds) && socket.read_nonblock(1, exception: false).nil?
+  end
+
+  def test_connections_beyond_the_limit_are_closed_at_once
+    with_metrics_server(max_connections: 2) do
+      held = Array.new(2) { Socket.tcp("127.0.0.1", @port) }
+      sleep 0.1 # Let the server accept both.
+      extra = Socket.tcp("127.0.0.1", @port)
+      assert closed_by_server?(extra), "the third connection is closed at once"
+      held.each { refute it.wait_readable(0.1), "the first two stay open" }
+
+      held.shift.close
+      response = nil
+      20.times do
+        response = get
+        break
+      rescue EOFError, Errno::ECONNRESET
+        sleep 0.05 # The slot is released once the server has seen the close.
+      end
+      assert_equal "200", response&.code
+    ensure
+      held&.each(&:close)
+      extra&.close
+    end
+  end
+
   def test_a_trickling_handshake_is_cut_at_the_handshake_timeout
     with_metrics_server(https: true, tokens: TOKENS, handshake_timeout: 1) do
       elapsed = trickle_client_hello("::1", @port)
