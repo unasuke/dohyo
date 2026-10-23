@@ -17,19 +17,21 @@ sudo apt-get install -y --no-install-recommends git curl ca-certificates build-e
 
 小さなインスタンスでは、ビルドの間だけ swap を足してください。1 つずつビルドするならプロセスは小さいのですが、CPU が複数あると Ruby も protocol-quic も並列にコンパイルします。
 
-Ruby 4.0.7 は、[ruby-build](https://github.com/rbenv/ruby-build) で `/usr/local` の下に入れます。
+Ruby 4.0.7 は、[rbenv](https://github.com/rbenv/rbenv) と [ruby-build](https://github.com/rbenv/ruby-build) で `/usr/local/rbenv` の下に入れます。
 
 ```sh
-git clone https://github.com/rbenv/ruby-build /tmp/ruby-build
-sudo /tmp/ruby-build/install.sh
-sudo TMPDIR=/var/tmp ruby-build 4.0.7 /usr/local/ruby-4.0.7
+sudo git clone https://github.com/rbenv/rbenv /usr/local/rbenv
+sudo git clone https://github.com/rbenv/ruby-build /usr/local/rbenv/plugins/ruby-build
+sudo RBENV_ROOT=/usr/local/rbenv TMPDIR=/var/tmp /usr/local/rbenv/bin/rbenv install 4.0.7
 ```
+
+rbenv は、`RBENV_ROOT` が無ければ `~/.rbenv` を使います。以下では Ruby を `/usr/local/rbenv/versions/4.0.7/bin/bundle` のようにパスで呼ぶので、シェルに rbenv を設定する必要はありません。
 
 Debian 13 は `/tmp` をメモリの半分の大きさの tmpfs としてマウントするので、小さなインスタンスでは Ruby のビルドに足りません。`TMPDIR=/var/tmp` で、ディスク上でビルドします。
 
 dohyo は設定とゾーンをロケールによらず UTF-8 として読むので、最小構成の C ロケールのままで構いません。
 
-あとで Ruby を上げるときは、新しい版を隣のディレクトリに入れ、systemd のユニットのパスを書き換えます。
+あとで Ruby を上げるときは、`sudo git -C /usr/local/rbenv/plugins/ruby-build pull` で ruby-build に新しい版を覚えさせ、同じ `rbenv install` で隣に入れてから、systemd のユニットのパスを書き換えます。
 
 実行用のユーザーを作り、dohyo は、サーバの管理に使うアカウント（ここでは `deploy`）でチェックアウトします。コードはそのアカウントのもので、`dohyo` は読むことしかできません。サーバが自分のコードを書き換えられないようにするためです。
 
@@ -38,9 +40,9 @@ sudo useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin
 sudo install -d -o deploy -g deploy -m 0755 /opt/dohyo
 git clone https://github.com/unasuke/dohyo /opt/dohyo
 cd /opt/dohyo
-/usr/local/ruby-4.0.7/bin/bundle config set --local deployment true
-/usr/local/ruby-4.0.7/bin/bundle config set --local without development
-/usr/local/ruby-4.0.7/bin/bundle install
+/usr/local/rbenv/versions/4.0.7/bin/bundle config set --local deployment true
+/usr/local/rbenv/versions/4.0.7/bin/bundle config set --local without development
+/usr/local/rbenv/versions/4.0.7/bin/bundle install
 ```
 
 `/opt/dohyo` での `git` と `bundle` は、sudo を付けずに `deploy` で実行します。git は、ほかのユーザーが持つリポジトリでは動きません。
@@ -54,7 +56,7 @@ DNS over QUIC には、Gemfile が参照している [unasuke/socketry-protocol-
 サーバを起動せずに、すべてを検査できます。
 
 ```sh
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check
+sudo -u dohyo /usr/local/rbenv/versions/4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check
 ```
 
 秘密鍵とメトリクスのトークンファイルを読めるのは `dohyo` だけなので、`dohyo` ユーザーで実行します。設定、ゾーン、証明書、メトリクスのトークンファイルを読み込み、ゾーンの原点とシリアル、トークンの本数を出します（トークンそのものは出しません）。終了コードは、成功で 0、どれかが不正なら 1、引数の誤りなら 2 です。
@@ -86,7 +88,7 @@ systemd の下では 1 件ずつ 1 行の JSON で、端末ならテキストで
 ## ゾーンを変える
 
 1. ゾーンファイルを書き換え、SOA のシリアルを上げます。
-2. `/opt/dohyo` で検査します：`sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check`
+2. `/opt/dohyo` で検査します：`sudo -u dohyo /usr/local/rbenv/versions/4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check`
 3. `sudo systemctl reload dohyo`
 
 再読み込みに失敗したときは、それまでのゾーンで答え続けます。成功したか失敗したかは、ログ（`zone.reloaded`、または理由つきの `zone.load_failed`）か、メトリクス（`dohyo_zone_serial`、`dohyo_zone_reloads_total{result="failure"}`）で見分けます。シリアルが同じまま中身が変わっていたら、わざと拒否します。シリアルの上げ忘れに気づけるようにするためです。
@@ -96,8 +98,8 @@ systemd の下では 1 件ずつ 1 行の JSON で、端末ならテキストで
 ```sh
 cd /opt/dohyo
 git pull
-/usr/local/ruby-4.0.7/bin/bundle install
-sudo -u dohyo /usr/local/ruby-4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check && sudo systemctl restart dohyo
+/usr/local/rbenv/versions/4.0.7/bin/bundle install
+sudo -u dohyo /usr/local/rbenv/versions/4.0.7/bin/bundle exec exe/dohyo --config /etc/dohyo/dohyo.yml --check && sudo systemctl restart dohyo
 ```
 
 `--check` が失敗したら、再起動しないでください。
