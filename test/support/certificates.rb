@@ -54,7 +54,7 @@ module TestCertificates
     )
     File.write(files.ca, ca.to_pem)
     File.write(files.certificate_chain, server.to_pem + ca.to_pem)
-    File.write(files.private_key, server_key.private_to_pem)
+    File.write(files.private_key, server_key.private_to_pem, perm: 0o600)
     files
   end
 end

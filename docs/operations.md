@@ -116,6 +116,8 @@ install -o dohyo -g dohyo -m 0600 "$RENEWED_LINEAGE/privkey.pem" /etc/dohyo/tls/
 systemctl restart dohyo
 ```
 
+dohyo refuses to start if the private key is readable by group or others.
+
 A restart stops answering for a few seconds; resolvers retry.
 
 ## Metrics

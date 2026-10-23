@@ -116,6 +116,8 @@ install -o dohyo -g dohyo -m 0600 "$RENEWED_LINEAGE/privkey.pem" /etc/dohyo/tls/
 systemctl restart dohyo
 ```
 
+秘密鍵がグループや他人から読めると、dohyo は起動しません。
+
 再起動の間の数秒は応答が止まりますが、リゾルバが再送します。
 
 ## メトリクス

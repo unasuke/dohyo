@@ -10,8 +10,9 @@ module Dohyo
     # `chain_path` and `key_path` are kept for protocol-quic, which reads the files itself.
     Certificate = Data.define(:certificate, :chain, :key, :chain_path, :key_path)
 
-    # Reads and checks the certificate chain and its private key. Unreadable files, a key that does not match the
-    # certificate, and a certificate outside its validity period all refuse startup.
+    # Reads and checks the certificate chain and its private key. Unreadable files, a key readable by group or
+    # others, a key that does not match the certificate, and a certificate outside its validity period all refuse
+    # startup.
     #
     # @parameter now [Time] For tests.
     # @returns [Certificate]
@@ -24,6 +25,12 @@ module Dohyo
       raise ConfigError, "no certificate in #{certificate_chain}" if certificates.empty?
 
       key = begin
+        # The same rule as for the metrics token file: File.stat follows a symbolic link to the key itself.
+        mode = File.stat(private_key).mode
+        unless (mode & 0o077).zero?
+          raise ConfigError, "the private key #{private_key} must not be readable by group or others (it is #{format("%04o", mode & 0o7777)}; use 0600 or 0400)"
+        end
+
         OpenSSL::PKey.read(File.read(private_key))
       rescue SystemCallError, OpenSSL::PKey::PKeyError => error
         raise ConfigError, "cannot read the private key #{private_key}: #{error.message}"

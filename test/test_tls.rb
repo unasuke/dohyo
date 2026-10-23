@@ -36,6 +36,19 @@ class TestTLS < Minitest::Test
     assert_match(/certificate/, error.message)
   end
 
+  def test_key_must_be_readable_by_its_owner_only
+    [0o644, 0o640].each do |mode|
+      File.chmod(mode, @files.private_key)
+      error = assert_raises(Dohyo::ConfigError) { load }
+      assert_match(/must not be readable by group or others \(it is #{format("%04o", mode)}; use 0600 or 0400\)/, error.message)
+    end
+
+    [0o600, 0o400].each do |mode|
+      File.chmod(mode, @files.private_key)
+      assert load, format("%04o", mode)
+    end
+  end
+
   def test_key_must_match_the_certificate
     File.write(@files.private_key, TestCertificates.key.private_to_pem)
     error = assert_raises(Dohyo::ConfigError) { load }
