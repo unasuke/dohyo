@@ -1,6 +1,6 @@
 GIT
   remote: https://github.com/unasuke/socketry-protocol-quic.git
-  revision: c7948a1f8a393109b39b240a348f402b311b0faa
+  revision: 4b1c5cda105add0fb688ec25f87ae738e17e5cb4
   branch: ruby-stream-io-bindings
   specs:
     protocol-quic (0.0.10)
