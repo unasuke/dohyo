@@ -265,6 +265,43 @@ class TestDoQ < Minitest::Test
     end
   end
 
+  def test_a_connection_gone_before_it_is_admitted_takes_no_place
+    with_listener(max_connections: 1) do |listener|
+      gone = FakeConnection.new
+      listener.connection_created(gone)
+      # In one dispatcher turn, before serve gets to :handshake: the handshake completes, then a packet ngtcp2
+      # rejects closes the connection.
+      gone.handshake_completed
+      gone.close(Dohyo::DoQ::PROTOCOL_ERROR)
+      sleep 0.05
+      refute gone.counted
+
+      after = FakeConnection.new
+      listener.connection_created(after)
+      after.handshake_completed
+      assert eventually(true) { after.counted }
+      assert_nil after.closed_with
+    end
+  end
+
+  def test_a_refused_connection_whose_handshake_completes_takes_no_place
+    with_listener(max_connections: 1) do |listener|
+      first = FakeConnection.new
+      listener.connection_created(first)
+      refused = FakeConnection.new
+      listener.connection_created(refused)
+      # Its Finished is processed before serve gets to :refuse:
+      refused.handshake_completed
+      assert_equal Dohyo::DoQ::EXCESSIVE_LOAD, eventually(Dohyo::DoQ::EXCESSIVE_LOAD) { refused.closed_with }
+      sleep 0.05
+      refute refused.counted
+
+      first.handshake_completed
+      assert eventually(true) { first.counted }
+      assert_nil first.closed_with
+    end
+  end
+
   def test_shutdown_closes_connections_with_no_error
     with_server do |server|
       client = connect

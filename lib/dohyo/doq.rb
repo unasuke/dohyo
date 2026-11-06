@@ -239,6 +239,10 @@ module Dohyo
       # The connection limit is shared with TCP and DoT. The connection is closed after the handshake, with a reason
       # the client can see, rather than dropped silently.
       def admit(connection)
+        # Closed before serve got to :handshake, in the dispatcher turn that completed the handshake or as refused at
+        # the handshake limit: connection_gone has already run, so a place taken now would never be returned.
+        return if connection.disconnected?
+
         if @stopping
           close_connection(connection, NO_ERROR, "shutdown")
         elsif @limiter.acquire
