@@ -2,8 +2,8 @@
 
 require "test_helper"
 
-# Rows 14-27 of the test case table: refusals, malformed queries, EDNS(0) and UDP truncation, through Engine#call
-# with raw bytes.
+# Cases 14-28, numbered on from test_responder.rb: refusals, malformed queries, EDNS(0), UDP truncation and a large
+# answer over a stream, through Engine#call with raw bytes.
 class TestEngine < Minitest::Test
   include DohyoTestHelper
 

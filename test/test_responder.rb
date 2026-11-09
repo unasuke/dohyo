@@ -2,7 +2,10 @@
 
 require "test_helper"
 
-# Rows 1-13 of the test case table: the content of answers, NODATA and NXDOMAIN, asked of Responder directly.
+# Cases 1-13: the content of answers, NODATA and NXDOMAIN, asked of Responder directly.
+#
+# The cases are numbered across the test files: 1-13 here, 14-28 in test_engine.rb (28 also over DoT in
+# integration/test_server.rb and over DoQ in integration/test_doq.rb), Q1-Q8 for DoQ in integration/test_doq.rb.
 class TestResponder < Minitest::Test
   include DohyoTestHelper
 

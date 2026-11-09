@@ -10,7 +10,8 @@ rescue LoadError
   # protocol-quic is not installed; every test below skips.
 end
 
-# The DoQ rows of the test case table (28 and Q1-Q8), against Dohyo::Server over real QUIC connections.
+# DoQ against Dohyo::Server over real QUIC connections. Q1-Q8 number the requirements of RFC 9250 checked here;
+# case 28 (a large answer, see test_engine.rb) is checked over DoQ too.
 class TestDoQ < Minitest::Test
   include DohyoTestHelper
 
