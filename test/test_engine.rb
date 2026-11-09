@@ -189,6 +189,25 @@ class TestEngine < Minitest::Test
     assert_equal 40, decode(result).answer.size
   end
 
+  def test_unknown_opcode_with_two_questions_is_notimp_without_the_question
+    message = query_message("blog.example.com.", IN::SOA, opcode: 15)
+    message.add_question("blog.example.com.", IN::A)
+    result = call(message.encode)
+    assert_equal "NOTIMP", result.rcode
+    header = assert_error_header(result, Resolv::DNS::RCode::NotImp)
+    assert_equal [15, 0], header.values_at(:opcode, :qdcount)
+  end
+
+  def test_unknown_opcode_keeps_one_opt_and_drops_two
+    one = call(query_bytes("blog.example.com.", IN::SOA, opcode: 15, edns: 4096))
+    assert_equal "NOTIMP", one.rcode
+    assert_equal [1, 1], header_of(one.bytes).values_at(:qdcount, :arcount)
+
+    two = call(query_bytes("blog.example.com.", IN::SOA, opcode: 15, edns: 4096, edns_count: 2))
+    assert_equal "NOTIMP", two.rcode
+    assert_equal [1, 0], header_of(two.bytes).values_at(:qdcount, :arcount)
+  end
+
   def test_client_payload_size_below_512_is_raised_to_512
     result = call(query_bytes("blog.example.com.", IN::A, edns: 100))
     refute result.truncated

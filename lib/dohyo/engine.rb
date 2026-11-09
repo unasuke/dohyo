@@ -86,15 +86,21 @@ module Dohyo
       edns = nil
 
       begin
+        opt_count = EDNS.count(query)
+        edns = EDNS.extract(query) if opt_count == 1
+
+        # Before FORMERR, so that an unknown opcode is NOTIMP whatever the sections hold (RFC 8906 §8.1.4). The
+        # question is copied only when there is exactly one; with more than one OPT, none is added.
+        if query.opcode != Resolv::DNS::OpCode::Query
+          return finish(error_response(query, NOTIMP, question: !question.nil?), edns, transport, qname:, qtype:)
+        end
+
         # RFC 6891 §6.1.1: more than one OPT is FORMERR. A TC=1 query also lands here: resolv stops decoding after
         # the header, leaving no question.
-        return finish(error_response(query, FORMERR, question: false), nil, transport, qname:, qtype:) if query.question.size != 1 || EDNS.count(query) > 1
+        return finish(error_response(query, FORMERR, question: false), nil, transport, qname:, qtype:) if query.question.size != 1 || opt_count > 1
 
-        edns = EDNS.extract(query)
         response =
-          if query.opcode != Resolv::DNS::OpCode::Query
-            error_response(query, NOTIMP)
-          elsif edns && edns.version > 0
+          if edns && edns.version > 0
             # RFC 6891 §6.1.3: answer BADVERS with an OPT of the highest version supported.
             error_response(query, BADVERS)
           else
