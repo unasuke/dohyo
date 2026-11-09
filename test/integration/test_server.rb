@@ -7,10 +7,12 @@ require "open3"
 require "console/capture"
 require "console/logger"
 require "support/certificates"
+require "support/rfc8906"
 
 # Starts Dohyo::Server on loopback ports chosen by the OS and queries it over real sockets.
 class TestServerIntegration < Minitest::Test
   include DohyoTestHelper
+  include RFC8906::Assertions
 
   LISTEN = %w[udp://127.0.0.1:0 tcp://127.0.0.1:0 udp://[::1]:0 tcp://[::1]:0 tls://127.0.0.1:0].freeze
 
@@ -344,6 +346,14 @@ class TestServerIntegration < Minitest::Test
       responses = tcp_exchange(address_of(server, "tcp"),
         query_bytes("blog.example.com.", IN::A, id: 1), query_bytes("blog.example.com.", IN::AAAA, id: 2))
       assert_equal [1, 2], responses.map { Resolv::DNS::Message.decode(it).id }
+    end
+  end
+
+  def test_rfc8906_queries_over_tcp
+    with_server do |server|
+      rows = RFC8906::ROWS.values
+      responses = tcp_exchange(address_of(server, "tcp"), *rows.map(&:bytes))
+      rows.zip(responses).each { |row, response| assert_rfc8906_response(row, response, "tcp") }
     end
   end
 
