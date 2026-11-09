@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "support/rfc8906"
 
 # Cases 14-28, numbered on from test_responder.rb: refusals, malformed queries, EDNS(0), UDP truncation and a large
-# answer over a stream, through Engine#call with raw bytes.
+# answer over a stream, through Engine#call with raw bytes. R1-R14 are the checks of RFC 8906 (see
+# support/rfc8906.rb).
 class TestEngine < Minitest::Test
   include DohyoTestHelper
+  include RFC8906::Assertions
 
   def setup
     zone = fixture_zone
@@ -187,6 +190,69 @@ class TestEngine < Minitest::Test
     result = call(query_bytes("big.blog.example.com.", IN::A), transport: :stream)
     refute result.truncated
     assert_equal 40, decode(result).answer.size
+  end
+
+  def assert_rfc8906_row(id)
+    row = RFC8906::ROWS.fetch(id)
+    row.transports.each do |transport|
+      assert_rfc8906_response(row, call(row.bytes, transport:).bytes, transport.to_s)
+    end
+  end
+
+  def test_case_r1_unknown_type_is_nodata
+    assert_rfc8906_row(:r1)
+  end
+
+  def test_case_r2_cd_is_not_copied
+    assert_rfc8906_row(:r2)
+  end
+
+  def test_case_r3_ad_is_not_copied
+    assert_rfc8906_row(:r3)
+  end
+
+  def test_case_r4_z_is_not_copied
+    assert_rfc8906_row(:r4)
+  end
+
+  def test_case_r5_rd_is_copied
+    assert_rfc8906_row(:r5)
+  end
+
+  def test_case_r6_unknown_opcode_is_notimp
+    assert_rfc8906_row(:r6)
+  end
+
+  def test_case_r7_stream_without_edns_is_answered
+    assert_rfc8906_row(:r7)
+  end
+
+  def test_case_r8_unknown_edns_option_is_ignored
+    assert_rfc8906_row(:r8)
+  end
+
+  def test_case_r9_unknown_edns_flag_is_not_copied
+    assert_rfc8906_row(:r9)
+  end
+
+  def test_case_r10_edns_1_with_an_unknown_flag_is_badvers
+    assert_rfc8906_row(:r10)
+  end
+
+  def test_case_r11_edns_1_with_an_unknown_option_is_badvers
+    assert_rfc8906_row(:r11)
+  end
+
+  def test_case_r12_do_is_not_copied
+    assert_rfc8906_row(:r12)
+  end
+
+  def test_case_r13_edns_1_with_do_is_badvers
+    assert_rfc8906_row(:r13)
+  end
+
+  def test_case_r14_known_edns_options_are_not_echoed
+    assert_rfc8906_row(:r14)
   end
 
   def test_unknown_opcode_with_two_questions_is_notimp_without_the_question

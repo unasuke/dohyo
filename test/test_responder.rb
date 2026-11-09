@@ -5,7 +5,8 @@ require "test_helper"
 # Cases 1-13: the content of answers, NODATA and NXDOMAIN, asked of Responder directly.
 #
 # The cases are numbered across the test files: 1-13 here, 14-28 in test_engine.rb (28 also over DoT in
-# integration/test_server.rb and over DoQ in integration/test_doq.rb), Q1-Q8 for DoQ in integration/test_doq.rb.
+# integration/test_server.rb and over DoQ in integration/test_doq.rb), Q1-Q8 for DoQ in integration/test_doq.rb,
+# and R1-R14 for RFC 8906 in support/rfc8906.rb.
 class TestResponder < Minitest::Test
   include DohyoTestHelper
 
