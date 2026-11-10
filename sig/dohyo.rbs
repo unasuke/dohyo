@@ -45,6 +45,9 @@ module Dohyo
 
     def types_at: (String name) -> Array[Integer]
 
+    def each_rrset: () { (String name, Integer type, Integer ttl, Array[Resolv::DNS::Resource] records) -> void } -> void
+                  | () -> Enumerator[[String, Integer, Integer, Array[Resolv::DNS::Resource]], void]
+
     def record_count: () -> Integer
 
     def name_exists?: (String name) -> bool

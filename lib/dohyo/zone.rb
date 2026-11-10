@@ -78,6 +78,15 @@ module Dohyo
       @rrsets.fetch(name, {}).keys
     end
 
+    # Yields every RRset: the owner key, the type number, the TTL and the RRs.
+    def each_rrset
+      return enum_for(__method__) unless block_given?
+
+      @rrsets.each do |name, by_type|
+        by_type.each { |type, (ttl, records)| yield name, type, ttl, records }
+      end
+    end
+
     # The number of RRs, for logs.
     def record_count = @fingerprint.size
 

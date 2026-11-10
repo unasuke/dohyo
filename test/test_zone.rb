@@ -50,6 +50,20 @@ class TestZone < Minitest::Test
     assert_nil fixture_zone.rrset("big.blog.example.com.", 28)
   end
 
+  def test_each_rrset
+    rrsets = fixture_zone.each_rrset.map { |name, type, ttl, records| [name, type, ttl, records.size] }
+    assert_equal [
+      ["big.blog.example.com.", 1, 3600, 40],
+      ["blog.example.com.", 1, 3600, 1],
+      ["blog.example.com.", 2, 3600, 1],
+      ["blog.example.com.", 6, 3600, 1],
+      ["blog.example.com.", 28, 3600, 1],
+      ["blog.example.com.", 65, 3600, 1],
+      ["x.y.blog.example.com.", 1, 3600, 1]
+    ], rrsets.sort
+    assert_equal fixture_zone.record_count, rrsets.sum(&:last)
+  end
+
   def test_contains
     zone = fixture_zone
     assert zone.contains?("blog.example.com.")
