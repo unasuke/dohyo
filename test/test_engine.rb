@@ -82,6 +82,7 @@ class TestEngine < Minitest::Test
     assert_equal "NOTIMP", result.rcode
     header = assert_error_header(result, Resolv::DNS::RCode::NotImp)
     assert_equal Resolv::DNS::OpCode::Notify, header[:opcode]
+    assert_equal 0, header[:rd], "RD is copied for QUERY only"
   end
 
   def test_case_18_status_is_notimp
@@ -295,8 +296,8 @@ class TestEngine < Minitest::Test
       result = call(bytes, transport:)
       assert_equal "NOTIMP", result.rcode, transport
       header = assert_error_header(result, Resolv::DNS::RCode::NotImp)
-      assert_equal [15, 1, 1], header.values_at(:opcode, :rd, :qdcount), transport
-      assert_equal 0, result.bytes.unpack1("x2n") & 0x00f0, "RA, Z, AD and CD are not copied (#{transport})"
+      assert_equal [15, 1], header.values_at(:opcode, :qdcount), transport
+      assert_equal 0, result.bytes.unpack1("x2n") & 0x01f0, "RD, RA, Z, AD and CD are not copied (#{transport})"
     end
   end
 

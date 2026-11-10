@@ -130,23 +130,24 @@ module Dohyo
       @responder.call(query, zone)
     end
 
-    # An error response: QR=1, AA=0, ID, opcode and RD copied, the question copied (unless it is unusable).
+    # An error response: QR=1, AA=0, ID and opcode copied, RD copied for QUERY only, the question copied (unless it
+    # is unusable). Other opcodes may lay out the header differently (RFC 8906 §7), so their RD is not read.
     def error_response(query, rcode, question: true)
       response = Resolv::DNS::Message.new(query.id)
       response.qr = 1
       response.opcode = query.opcode
-      response.rd = query.rd
+      response.rd = query.rd if query.opcode == Resolv::DNS::OpCode::Query
       response.rcode = rcode
       query.question.each { |name, type_class| response.add_question(name, type_class) } if question
       response
     end
 
-    # A FORMERR for a message that could not be decoded: only the header is meaningful.
+    # A FORMERR for a message that could not be decoded: only the header is meaningful. RD as in error_response.
     def header_only_error(id, flags, rcode)
       response = Resolv::DNS::Message.new(id)
       response.qr = 1
       response.opcode = (flags >> 11) & 0xf
-      response.rd = (flags >> 8) & 1
+      response.rd = (flags >> 8) & 1 if response.opcode == Resolv::DNS::OpCode::Query
       response.rcode = rcode
       response
     end
