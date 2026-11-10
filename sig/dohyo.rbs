@@ -116,6 +116,7 @@ module Dohyo
     ZONE_TRANSFER_TYPES: Array[Integer]
     CLASSIC_UDP_SIZE: Integer
     HEADER_SIZE: Integer
+    TC_BIT: Integer
 
     class Result < Data
       attr_reader bytes: String?

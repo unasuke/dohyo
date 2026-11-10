@@ -274,6 +274,32 @@ class TestEngine < Minitest::Test
     assert_equal [1, 0], header_of(two.bytes).values_at(:qdcount, :arcount)
   end
 
+  def test_tc_in_a_query_is_ignored
+    message = query_message("blog.example.com.", IN::SOA)
+    message.tc = 1
+
+    %i[udp stream].each do |transport|
+      result = call(message.encode, transport:)
+      assert_equal "NOERROR", result.rcode, transport
+      header = header_of(result.bytes)
+      assert_equal [1, 0, 1, 1, 1], header.values_at(:aa, :tc, :rd, :qdcount, :ancount), transport
+    end
+  end
+
+  def test_unknown_opcode_with_tc_and_every_other_flag_is_notimp
+    bytes = query_bytes("blog.example.com.", IN::SOA, opcode: 15)
+    # Opcode 15 with AA, TC, RD, RA, Z, AD and CD:
+    bytes[2, 2] = [(15 << 11) | 0x07f0].pack("n")
+
+    %i[udp stream].each do |transport|
+      result = call(bytes, transport:)
+      assert_equal "NOTIMP", result.rcode, transport
+      header = assert_error_header(result, Resolv::DNS::RCode::NotImp)
+      assert_equal [15, 1, 1], header.values_at(:opcode, :rd, :qdcount), transport
+      assert_equal 0, result.bytes.unpack1("x2n") & 0x00f0, "RA, Z, AD and CD are not copied (#{transport})"
+    end
+  end
+
   def test_client_payload_size_below_512_is_raised_to_512
     result = call(query_bytes("blog.example.com.", IN::A, edns: 100))
     refute result.truncated

@@ -36,6 +36,8 @@ module Dohyo
     # RFC 1035 §4.2.1: without EDNS, UDP messages are limited to 512 bytes.
     CLASSIC_UDP_SIZE = 512
     HEADER_SIZE = 12
+    # TC in the upper byte of the flags (the third byte of the header).
+    TC_BIT = 0x02
 
     # @attribute bytes [String, nil] The response, or nil when nothing should be sent.
     # @attribute rcode [String, nil] The RCODE name for metrics (BADVERS is distinct from NOERROR). nil when dropped.
@@ -68,6 +70,10 @@ module Dohyo
       # Take the zone once, so that a reload in the middle of a query cannot mix two versions:
       zone = @zone_provider.call
 
+      # A query has nothing to be truncated from (TC, RFC 1035 §4.1.1), so the bit is ignored. It is cleared before
+      # decoding: resolv stops after the header when TC=1, which would lose the opcode, RD and the question.
+      bytes.setbyte(2, bytes.getbyte(2) & ~TC_BIT)
+
       begin
         query = Resolv::DNS::Message.decode(bytes)
       rescue # resolv raises DecodeError, but also ArgumentError or Encoding::CompatibilityError
@@ -95,8 +101,7 @@ module Dohyo
           return finish(error_response(query, NOTIMP, question: !question.nil?), edns, transport, qname:, qtype:)
         end
 
-        # RFC 6891 §6.1.1: more than one OPT is FORMERR. A TC=1 query also lands here: resolv stops decoding after
-        # the header, leaving no question.
+        # RFC 6891 §6.1.1: more than one OPT is FORMERR.
         return finish(error_response(query, FORMERR, question: false), nil, transport, qname:, qtype:) if query.question.size != 1 || opt_count > 1
 
         response =
