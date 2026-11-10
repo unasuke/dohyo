@@ -3,7 +3,19 @@
 require "bundler/gem_tasks"
 require "minitest/test_task"
 
-Minitest::TestTask.create
+# test/interop/ needs tools from outside the bundle (BIND, Knot DNS, docker and others); `rake interop` runs it.
+Minitest::TestTask.create do |t|
+  t.test_globs = ["test/test_*.rb", "test/integration/**/test_*.rb"]
+end
+
+namespace :interop do
+  Minitest::TestTask.create(:zonefile) do |t|
+    t.test_globs = ["test/interop/test_zonefile.rb"]
+  end
+end
+
+desc "Check dohyo against other implementations and tools (skips what is not installed)"
+task interop: %w[interop:zonefile]
 
 require "standard/rake"
 
