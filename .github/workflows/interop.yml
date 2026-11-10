@@ -1,0 +1,38 @@
+name: Interop
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  interop:
+    runs-on: ubuntu-latest
+    name: Interop
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Knot DNS and BIND's tools, and the libraries for building protocol-quic
+        run: |
+          sudo apt-get update
+          packages="knot bind9-utils"
+          # rugged, which protocol-quic's build tool depends on, links OpenSSL statically. From Ubuntu 26.04 on, that
+          # needs libjitterentropy.a and libzstd; Ubuntu 24.04 has no libjitterentropy3-dev.
+          if pkg-config --static --libs libcrypto | grep -q jitterentropy; then
+            packages="$packages libjitterentropy3-dev libzstd-dev"
+          fi
+          sudo apt-get install -y --no-install-recommends $packages
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@26e5b7d197ebf60545ee9667bcbace0be11ccaec # v1.334.0
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+      - name: Check against other implementations and tools
+        run: bundle exec rake interop
