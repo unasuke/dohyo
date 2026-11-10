@@ -1,0 +1,10 @@
+# The genreport tests allowed not to report ok, for test_compliance.rb. Each entry is a result decided by the RFCs to
+# be right for dohyo; dohyo's own mistakes are fixed instead. An entry that reports ok again fails the test.
+#
+#   id:     the test name as genreport prints it (dns, tc, opcodeflg, edns@512, ...)
+#   reason: why dohyo's answer is not ok to genreport and is still right
+#   rfc:    the RFC behind dohyo's answer
+#
+# Empty: the first run failed tc and opcodeflg, which were dohyo's mistakes and are fixed (TC in a query is
+# ignored; RD is copied for QUERY only).
+[]
