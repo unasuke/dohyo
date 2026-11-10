@@ -80,6 +80,25 @@ class TestLoader < Minitest::Test
     assert_zone_error(/unsupported record type TXT/, %(@ IN TXT "hello"\n))
   end
 
+  # RFC 3597: the generic type name and the generic rdata format.
+  def test_generic_type_and_rdata_are_rejected
+    assert_zone_error(/cannot parse/, "t IN TYPE65 \\# 3 000100\n")
+    assert_zone_error(/cannot parse/, "t IN A \\# 4 C0000201\n")
+  end
+
+  # dns-zonefile cannot parse escapes in owner names; they must not be read as some other name.
+  def test_escapes_in_owner_names_are_rejected
+    assert_zone_error(/cannot parse/, "a\\.b IN A 192.0.2.1\n")
+    assert_zone_error(/cannot parse/, "a\\065b IN A 192.0.2.1\n")
+  end
+
+  # dns-zonefile does not read parentheses in HTTPS: across lines it fails, and on one line ")" ends up in the last
+  # value.
+  def test_https_in_parentheses_is_rejected
+    assert_zone_error(/cannot parse/, "@ IN HTTPS 16 foo.example.org. ( alpn=h2\n ipv4hint=192.0.2.1 )\n")
+    assert_zone_error(/not an IPv4 address/, "@ IN HTTPS 16 foo.example.org. (alpn=h2 ipv4hint=192.0.2.1)\n")
+  end
+
   def test_exactly_one_soa
     # dns-zonefile drops every SOA after the first; the loader counts them itself.
     assert_zone_error(/exactly one SOA, found 2/, "@ IN SOA ns2.example.com. hostmaster.example.com. ( 2 7200 3600 1209600 300 )\n")
