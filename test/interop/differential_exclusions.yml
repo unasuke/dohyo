@@ -1,0 +1,62 @@
+# The fields test_differential.rb does not compare with Knot DNS, per row. Each entry is a difference decided by the
+# RFCs: a mistake of Knot DNS, or a choice dohyo makes on its own. dohyo's own mistakes are fixed instead.
+#
+#   id:     the row (1-28 with the variant, R1-R14)
+#   ignore: the fields not compared: rcode, aa, tc, answer, authority, additional
+#   reason: why the answers differ
+#   rfc:    the RFC behind dohyo's answer
+
+- id: 16-axfr
+  ignore: [rcode]
+  reason: >-
+    dohyo refuses zone transfers to everyone, a policy refusal (REFUSED). Knot DNS answers NOTIMP over UDP, where AXFR
+    is not defined, and NOTAUTH over TCP for a client its ACL does not allow; RFC 5936 gives NotAuth to a server that
+    is not authoritative for the zone, and dohyo is.
+  rfc: RFC 1035 §4.1.1, RFC 5936 §2.2.1, §4.2, §5
+
+- id: 16-ixfr
+  ignore: [rcode]
+  reason: >-
+    As 16-axfr: dohyo refuses IXFR as a policy (REFUSED); Knot DNS answers NOTAUTH for a client its ACL does not allow.
+  rfc: RFC 1035 §4.1.1, RFC 5936 §2.2.1
+
+- id: 18-notify
+  ignore: [rcode]
+  reason: >-
+    dohyo does not implement NOTIFY and answers NOTIMP, as such a server does. Knot DNS implements it and answers
+    NOTAUTH to a sender its ACL does not allow.
+  rfc: RFC 1996 §3.12
+
+- id: 19-two
+  ignore: [rcode, aa, tc, answer, authority, additional]
+  reason: >-
+    Knot DNS drops a QUERY with two questions. dohyo answers FORMERR, as a QUERY with QDCOUNT > 1 must be.
+  rfc: RFC 9619 §4
+
+- id: "20"
+  ignore: [rcode, aa, tc, answer, authority, additional]
+  reason: >-
+    Knot DNS drops a query whose question is cut short. dohyo answers FORMERR with the query's ID, as it cannot
+    interpret the query; only a message shorter than the header, or a response, goes unanswered (case 21).
+  rfc: RFC 1035 §4.1.1
+
+- id: R12
+  ignore: [additional]
+  reason: >-
+    Knot DNS copies DO into the OPT of the response. dohyo has no DNSSEC, so it leaves DO clear; a server is expected
+    to set DO only when it supports DNSSEC.
+  rfc: RFC 8906 §3.2.6, §8.2.8
+
+- id: R13
+  ignore: [additional]
+  reason: >-
+    As R12, for the BADVERS response to EDNS version 1 with DO: DO is set only when the version 0 query with DO set it.
+  rfc: RFC 8906 §8.2.9
+
+- id: R14
+  ignore: [additional]
+  reason: >-
+    Knot DNS, as the primary, answers the EXPIRE option with the SOA EXPIRE. dohyo does not implement EXPIRE, which
+    only secondaries use and dohyo serves no zone transfers to (case 16), so it ignores the option like any other it
+    does not understand. NSID, COOKIE and ECS match: Knot DNS runs without NSID, and answers neither of the others.
+  rfc: RFC 6891 §6.1.2, RFC 7314 §3.1
