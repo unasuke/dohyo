@@ -4,6 +4,7 @@ require "socket"
 require "tmpdir"
 require "fileutils"
 require "resolv"
+require_relative "free_port"
 
 # Runs knotd (Knot DNS) on a loopback port with one zone, for comparing its answers with dohyo's.
 class Knotd
@@ -32,7 +33,8 @@ class Knotd
 
   def start
     @directory = Dir.mktmpdir("knotd")
-    @address = Addrinfo.udp("127.0.0.1", free_port)
+    # If the port is taken before knotd binds it, knotd exits and wait_until_ready says so.
+    @address = Addrinfo.udp("127.0.0.1", FreePort.pick)
     config = File.join(@directory, "knot.conf")
     File.write(config, configuration)
     @log = File.join(@directory, "knotd.log")
@@ -52,26 +54,6 @@ class Knotd
   end
 
   private
-
-  # A port free for both UDP and TCP. The OS may hand it to someone else before knotd binds it; then knotd fails to
-  # start and wait_until_ready says so.
-  def free_port
-    loop do
-      tcp = Socket.new(:INET, :STREAM)
-      tcp.bind(Addrinfo.tcp("127.0.0.1", 0))
-      port = tcp.local_address.ip_port
-      udp = Socket.new(:INET, :DGRAM)
-      begin
-        udp.bind(Addrinfo.udp("127.0.0.1", port))
-        return port
-      rescue Errno::EADDRINUSE
-        next
-      ensure
-        udp.close
-        tcp.close
-      end
-    end
-  end
 
   # The optional features Knot DNS turns on by default (the CHAOS identity and version, NSID) are off, as dohyo has none
   # of them. The zone file is only read, never written back.
