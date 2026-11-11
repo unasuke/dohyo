@@ -20,10 +20,14 @@ namespace :interop do
   Minitest::TestTask.create(:zonefile) do |t|
     t.test_globs = ["test/interop/test_zonefile.rb"]
   end
+
+  Minitest::TestTask.create(:clients) do |t|
+    t.test_globs = ["test/interop/test_clients.rb"]
+  end
 end
 
 desc "Check dohyo against other implementations and tools (skips what is not installed)"
-task interop: %w[interop:differential interop:compliance interop:zonefile]
+task interop: %w[interop:differential interop:compliance interop:zonefile interop:clients]
 
 require "standard/rake"
 
