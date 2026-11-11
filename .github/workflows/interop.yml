@@ -29,6 +29,24 @@ jobs:
             packages="$packages libjitterentropy3-dev libzstd-dev"
           fi
           sudo apt-get install -y --no-install-recommends $packages
+      # Release binaries at fixed versions, checked against their SHA-256. q publishes checksums; dnsproxy does not, so
+      # its hash was taken from the release archive when the version was pinned.
+      - name: Install q and dnsproxy
+        env:
+          Q_VERSION: 0.19.12
+          Q_SHA256: 4adfaa55594a68d8aec60348aaa6345d5232701a1c05ac144ad3fd12dc291f7a
+          DNSPROXY_VERSION: 0.86.0
+          DNSPROXY_SHA256: 17ac43f76ebfcedf547c663f6f31aa70e68b8eb6fc41d2fc37d3bfe21a2ced66
+        run: |
+          cd "$RUNNER_TEMP"
+          mkdir bin
+          curl -fsSL -o q.tar.gz "https://github.com/natesales/q/releases/download/v${Q_VERSION}/q_${Q_VERSION}_linux_amd64.tar.gz"
+          echo "${Q_SHA256}  q.tar.gz" | sha256sum -c -
+          tar -xzf q.tar.gz -C bin q
+          curl -fsSL -o dnsproxy.tar.gz "https://github.com/AdguardTeam/dnsproxy/releases/download/v${DNSPROXY_VERSION}/dnsproxy-linux-amd64-v${DNSPROXY_VERSION}.tar.gz"
+          echo "${DNSPROXY_SHA256}  dnsproxy.tar.gz" | sha256sum -c -
+          tar -xzf dnsproxy.tar.gz --strip-components=2 -C bin ./linux-amd64/dnsproxy
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Set up Ruby
         uses: ruby/setup-ruby@26e5b7d197ebf60545ee9667bcbace0be11ccaec # v1.334.0
         with:
